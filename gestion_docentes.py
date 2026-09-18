@@ -162,14 +162,13 @@ class VentanaGestionDocentes(ctk.CTk):
             messagebox.showwarning("Atención", "Primero selecciona un profesor de la lista.")
             return
 
-        dias_dict = {"Lunes": 1, "Martes": 2, "Miércoles": 3, "Jueves": 4, "Viernes": 5}
-        dia_nom = self.cmb_dia.get()
-        id_dia = dias_dict[dia_nom]
+        id_dia = self.DIAS_MAPPING[self.cmb_dia.get()]
         entrada = self.ent_entrada.get().strip()
         salida = self.ent_salida.get().strip()
 
-        if not entrada or not salida:
-            messagebox.showwarning("Atención", "Ingresa la hora de entrada y salida (Ej: 08:00 y 12:00).")
+        # Validación de hora completa (HH:MM)
+        if len(entrada) != 5 or len(salida) != 5:
+            messagebox.showwarning("Atención", "Ingresa horas válidas completas (Ej: 07:00 y 12:00).")
             return
 
         try:
