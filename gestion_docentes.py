@@ -5,12 +5,18 @@ import database as db
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
-class VentanaGestionDocentes(ctk.CTk):
-    def __init__(self):
-        super().__init__()
+# Cambiamos ctk.CTk por ctk.CTkToplevel
+class VentanaGestionDocentes(ctk.CTkToplevel):
+    # Agregamos parent=None para recibir la ventana del menú principal
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
         self.title("Gestión de Personal Docente y Horarios")
         self.geometry("1100x700")
         self.after(10, lambda: self.wm_state('zoomed'))
+
+        # Enfocar la ventana al abrirse
+        self.focus()
 
         self.profesores_cache = []
         self.profesor_seleccionado = None
@@ -106,14 +112,14 @@ class VentanaGestionDocentes(ctk.CTk):
                 )
                 btn_item.pack(fill="x", pady=4, padx=2)
         except Exception as e:
-            messagebox.showerror("Error de Conexión", f"No se pudo conectar a XAMPP/MySQL:\n{e}")
+            messagebox.showerror("Error de Conexión", f"No se pudo conectar a XAMPP/MySQL:\n{e}", parent=self)
 
     def guardar_profesor(self):
         nombre = self.ent_nombre.get().strip()
         area = self.ent_area.get().strip()
 
         if not nombre or not area:
-            messagebox.showwarning("Atención", "Ingresa el nombre y el área del profesor.")
+            messagebox.showwarning("Atención", "Ingresa el nombre y el área del profesor.", parent=self)
             return
 
         try:
@@ -121,9 +127,9 @@ class VentanaGestionDocentes(ctk.CTk):
             self.ent_nombre.delete(0, 'end')
             self.ent_area.delete(0, 'end')
             self.cargar_lista_profesores()
-            messagebox.showinfo("Éxito", "Profesor registrado correctamente.")
+            messagebox.showinfo("Éxito", "Profesor registrado correctamente.", parent=self)
         except Exception as e:
-            messagebox.showerror("Error", f"No se pudo registrar:\n{e}")
+            messagebox.showerror("Error", f"No se pudo registrar:\n{e}", parent=self)
 
     def seleccionar_profesor(self, profesor):
         self.profesor_seleccionado = profesor
@@ -159,16 +165,15 @@ class VentanaGestionDocentes(ctk.CTk):
 
     def guardar_horario(self):
         if not self.profesor_seleccionado:
-            messagebox.showwarning("Atención", "Primero selecciona un profesor de la lista.")
+            messagebox.showwarning("Atención", "Primero selecciona un profesor de la lista.", parent=self)
             return
 
         id_dia = self.DIAS_MAPPING[self.cmb_dia.get()]
         entrada = self.ent_entrada.get().strip()
         salida = self.ent_salida.get().strip()
 
-        # Validación de hora completa (HH:MM)
-        if len(entrada) != 5 or len(salida) != 5:
-            messagebox.showwarning("Atención", "Ingresa horas válidas completas (Ej: 07:00 y 12:00).")
+        if not entrada or not salida:
+            messagebox.showwarning("Atención", "Ingresa la hora de entrada y salida (Ej: 08:00 y 12:00).", parent=self)
             return
 
         try:
@@ -177,15 +182,19 @@ class VentanaGestionDocentes(ctk.CTk):
             self.ent_salida.delete(0, 'end')
             self.cargar_horarios_profesor()
         except Exception as e:
-            messagebox.showerror("Error", f"No se pudo guardar el horario:\n{e}")
+            messagebox.showerror("Error", f"No se pudo guardar el horario:\n{e}", parent=self)
 
     def borrar_horario(self, id_horario):
         try:
             db.eliminar_horario(id_horario)
             self.cargar_horarios_profesor()
         except Exception as e:
-            messagebox.showerror("Error", f"No se pudo eliminar el bloque:\n{e}")
+            messagebox.showerror("Error", f"No se pudo eliminar el bloque:\n{e}", parent=self)
+
 
 if __name__ == "__main__":
-    app = VentanaGestionDocentes()
-    app.mainloop()
+    root = ctk.CTk()
+    root.withdraw()
+    app = VentanaGestionDocentes(root)
+    app.protocol("WM_DELETE_WINDOW", root.destroy)
+    root.mainloop()
