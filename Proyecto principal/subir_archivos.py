@@ -156,24 +156,20 @@ class VentanaSubirArchivos(ctk.CTkToplevel):
     @staticmethod
     def extraer_columnas_relevantes(df):
         posibles_fechas = ['data e hora', 'fecha', 'data/hora', 'date', 'time', 'hora', 'fecha/hora']
-        posibles_codigos = ['código', 'codigo', 'id', 'matrícula', 'matricula', 'no.', 'número', 'numero', 'usuario', 'no_emp']
         posibles_nombres = ['nome', 'nombre', 'name', 'empleado', 'docente', 'persona']
 
         col_fecha = next((c for c in df.columns if any(p in str(c).lower() for p in posibles_fechas)), None)
-        col_codigo = next((c for c in df.columns if any(p in str(c).lower() for p in posibles_codigos)), None)
         col_nombre = next((c for c in df.columns if any(p in str(c).lower() for p in posibles_nombres)), None)
 
-        if col_fecha and col_codigo and col_nombre:
-            df_sub = df[[col_fecha, col_codigo, col_nombre]].copy()
+        if col_fecha and col_nombre:
+            df_sub = df[[col_fecha, col_nombre]].copy()
         else:
-            if len(df.columns) >= 4:
-                df_sub = df.iloc[:, [0, 2, 3]].copy()
-            elif len(df.columns) == 3:
-                df_sub = df.iloc[:, [0, 1, 2]].copy()
+            if len(df.columns) >= 2:
+                df_sub = df.iloc[:, [0, 1]].copy()
             else:
                 df_sub = df.copy()
 
-        df_sub.columns = ['fecha', 'codigo', 'nombre']
+        df_sub.columns = ['fecha', 'nombre']
         return df_sub
 
     @staticmethod
@@ -233,8 +229,8 @@ class VentanaSubirArchivos(ctk.CTkToplevel):
 
             df_final = pd.concat(lista_archivos, ignore_index=True)
 
-            for col in ['codigo', 'nombre']:
-                df_final[col] = df_final[col].apply(lambda x: str(x).strip() if pd.notna(x) else x)
+            if 'nombre' in df_final.columns:
+                df_final['nombre'] = df_final['nombre'].apply(lambda x: str(x).strip() if pd.notna(x) else x)
 
             dia_primero = self.detectar_orden_fecha(df_final['fecha'].tolist())
 
@@ -245,7 +241,7 @@ class VentanaSubirArchivos(ctk.CTkToplevel):
                 raise ValueError("No se pudieron extraer datos válidos. Revisa la estructura del archivo cargado.")
 
             dfs_filtrados = []
-            for codigo, grupo in df_final.groupby('codigo'):
+            for nombre, grupo in df_final.groupby('nombre'):
                 filas_validas = []
                 ultima_ponchada = None
                 for _, fila in grupo.iterrows():
