@@ -3,17 +3,18 @@ import customtkinter as ctk
 import database as db
 from crud_docente import VentanaCrudProfesor
 from utilerias.messagebox_variados import mostrar_exito, mostrar_advertencia, mostrar_error, mostrar_pregunta
-from utilerias.paleta_colores import colores
+from utilerias.paleta_colores import colores, fuentes
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
-class VentanaGestionDocentes(ctk.CTk):
+class VentanaGestionDocentes(ctk.CTkToplevel):
     DIAS_MAPPING = {"Lunes": 1, "Martes": 2, "Miércoles": 3, "Jueves": 4, "Viernes": 5}
     ELEMENTOS_POR_PAGINA = 10
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.parent = parent
         self.profesores_cache = []
         self.profesores_filtrados = []
         self.profesor_seleccionado = None
@@ -27,24 +28,37 @@ class VentanaGestionDocentes(ctk.CTk):
     def _configurar_ventana(self):
         self.title("Gestión Docente y Horarios")
         self.geometry("1100x700")
+        self.configure(fg_color=colores.BG_VENTANA)
         self.after(10, lambda: self.wm_state('zoomed'))
         self.grid_columnconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=2)
         self.grid_rowconfigure(0, weight=1)
 
     def _construir_panel_izquierdo(self):
-        panel = ctk.CTkFrame(self, corner_radius=15)
+        panel = ctk.CTkFrame(self, corner_radius=16, fg_color=colores.BG_PANEL, border_width=1, border_color=colores.BORDE)
         panel.grid(row=0, column=0, sticky="nsew", padx=(15, 7), pady=15)
         panel.grid_columnconfigure(0, weight=1)
         panel.grid_rowconfigure(3, weight=1)
-        
-        ctk.CTkLabel(panel, text="Gestión Docente", font=ctk.CTkFont(size=16, weight="bold")).grid(row=0, column=0, sticky="w", padx=15, pady=(15, 5))
-        ctk.CTkButton(panel, text="Nuevo Docente", command=self.abrir_ventana_registro).grid(row=1, column=0, sticky="ew", padx=15, pady=(0, 8))
-        
+
+        encabezado = ctk.CTkFrame(panel, fg_color="transparent")
+        encabezado.grid(row=0, column=0, sticky="ew", padx=18, pady=(18, 10))
+        ctk.CTkLabel(encabezado, text="👥  Gestión Docente", font=fuentes.seccion(size=17), text_color=colores.TEXTO_PRIMARIO).pack(anchor="w")
+        ctk.CTkLabel(encabezado, text="Catálogo de profesores y horarios", font=fuentes.pequena(size=11), text_color=colores.TEXTO_SECUNDARIO).pack(anchor="w", pady=(2, 0))
+
+        ctk.CTkButton(
+            panel, text="+  Nuevo Docente", command=self.abrir_ventana_registro,
+            font=fuentes.boton(size=13), height=38, corner_radius=10,
+            fg_color=colores.ACENTO, hover_color=colores.ACENTO_HOVER,
+        ).grid(row=1, column=0, sticky="ew", padx=15, pady=(0, 10))
+
         self.var_busqueda = ctk.StringVar()
         self.var_busqueda.trace_add("write", self.filtrar_profesores)
-        ctk.CTkEntry(panel, placeholder_text="Buscar por nombre o área...", textvariable=self.var_busqueda).grid(row=2, column=0, sticky="ew", padx=15, pady=(0, 10))
-        
+        ctk.CTkEntry(
+            panel, placeholder_text="🔍  Buscar por nombre o área...", textvariable=self.var_busqueda,
+            font=fuentes.cuerpo(size=13), height=36, corner_radius=10,
+            fg_color=colores.BG_ENTRADA, border_color=colores.BORDE, border_width=1,
+        ).grid(row=2, column=0, sticky="ew", padx=15, pady=(0, 12))
+
         self.container_profesores = ctk.CTkFrame(panel, fg_color="transparent")
         self.container_profesores.grid(row=3, column=0, sticky="nsew", padx=10, pady=(0, 5))
         self.container_profesores.grid_columnconfigure(0, weight=1)
@@ -57,60 +71,104 @@ class VentanaGestionDocentes(ctk.CTk):
         nav_frame = ctk.CTkFrame(panel, fg_color="transparent")
         nav_frame.grid(row=4, column=0, sticky="ew", padx=15, pady=(5, 15))
         
-        self.btn_prev = ctk.CTkButton(nav_frame, text="Anterior", width=80, command=self.pagina_anterior)
+        self.btn_prev = ctk.CTkButton(
+            nav_frame, text="←  Anterior", width=90, height=32, corner_radius=8,
+            font=fuentes.cuerpo(size=12), fg_color=colores.NEUTRO, hover_color=colores.NEUTRO_HOVER,
+            command=self.pagina_anterior,
+        )
         self.btn_prev.pack(side="left")
-        self.lbl_paginacion = ctk.CTkLabel(nav_frame, text="Pág 1 / 1", font=ctk.CTkFont(size=12, weight="bold"))
+        self.lbl_paginacion = ctk.CTkLabel(nav_frame, text="Pág 1 / 1", font=fuentes.boton(size=12), text_color=colores.TEXTO_SECUNDARIO)
         self.lbl_paginacion.pack(side="left", expand=True)
-        self.btn_next = ctk.CTkButton(nav_frame, text="Siguiente", width=80, command=self.pagina_siguiente)
+        self.btn_next = ctk.CTkButton(
+            nav_frame, text="Siguiente  →", width=90, height=32, corner_radius=8,
+            font=fuentes.cuerpo(size=12), fg_color=colores.NEUTRO, hover_color=colores.NEUTRO_HOVER,
+            command=self.pagina_siguiente,
+        )
         self.btn_next.pack(side="right")
 
     def _crear_pool_tarjetas(self):
         for i in range(self.ELEMENTOS_POR_PAGINA):
-            card = ctk.CTkFrame(self.container_profesores, fg_color=colores.COLOR_TARJETA, corner_radius=8, border_width=1, border_color=colores.COLOR_TARJETA_BORDE, cursor="hand2")
-            card.grid(row=i, column=0, sticky="ew", pady=1, padx=2)
+            card = ctk.CTkFrame(self.container_profesores, fg_color=colores.COLOR_TARJETA, corner_radius=10, border_width=1, border_color=colores.COLOR_TARJETA_BORDE, cursor="hand2")
+            card.grid(row=i, column=0, sticky="ew", pady=2, padx=2)
             card.grid_columnconfigure(0, weight=1)
             card.grid_columnconfigure(1, weight=0)
             
-            lbl_nombre = ctk.CTkLabel(card, text="", anchor="w", font=ctk.CTkFont(size=11, weight="bold"), text_color="#FFFFFF", height=16)
-            lbl_nombre.grid(row=0, column=0, sticky="ew", padx=10, pady=(5, 1))
+            lbl_nombre = ctk.CTkLabel(card, text="", anchor="w", font=fuentes.boton(size=12), text_color=colores.TEXTO_PRIMARIO, height=16)
+            lbl_nombre.grid(row=0, column=0, sticky="ew", padx=12, pady=(6, 1))
             
-            lbl_area = ctk.CTkLabel(card, text="", anchor="w", font=ctk.CTkFont(size=10), text_color=colores.COLOR_TEXTO_AREA, height=14)
-            lbl_area.grid(row=1, column=0, sticky="ew", padx=10, pady=(1, 5))
+            lbl_area = ctk.CTkLabel(card, text="", anchor="w", font=fuentes.pequena(size=10), text_color=colores.COLOR_TEXTO_AREA, height=14)
+            lbl_area.grid(row=1, column=0, sticky="ew", padx=12, pady=(1, 6))
             
             btn_frame = ctk.CTkFrame(card, fg_color="transparent")
             btn_frame.grid(row=0, column=1, rowspan=2, sticky="e", padx=(0, 10))
-            btn_edit = ctk.CTkButton(btn_frame, text="Editar", width=30, fg_color=colores.COLOR_BTN_EDITAR, hover_color=colores.COLOR_BTN_EDITAR_HOVER)
+            btn_edit = ctk.CTkButton(btn_frame, text="Editar", width=32, height=26, corner_radius=7, font=fuentes.pequena(size=11), fg_color=colores.COLOR_BTN_EDITAR, hover_color=colores.COLOR_BTN_EDITAR_HOVER)
             btn_edit.pack(side="left", padx=2)
-            btn_del = ctk.CTkButton(btn_frame, text="Eliminar", width=30, fg_color=colores.COLOR_BTN_ELIMINAR, hover_color=colores.COLOR_BTN_ELIMINAR_HOVER)
+            btn_del = ctk.CTkButton(btn_frame, text="Eliminar", width=32, height=26, corner_radius=7, font=fuentes.pequena(size=11), fg_color=colores.COLOR_BTN_ELIMINAR, hover_color=colores.COLOR_BTN_ELIMINAR_HOVER)
             btn_del.pack(side="left", padx=2)
             
             self.pool_tarjetas.append({"frame": card, "lbl_nombre": lbl_nombre, "lbl_area": lbl_area, "btn_edit": btn_edit, "btn_del": btn_del, "btn_frame": btn_frame})
 
     def _construir_panel_derecho(self):
-        panel = ctk.CTkFrame(self, corner_radius=15)
+        panel = ctk.CTkFrame(self, corner_radius=16, fg_color=colores.BG_PANEL, border_width=1, border_color=colores.BORDE)
         panel.grid(row=0, column=1, sticky="nsew", padx=(7, 15), pady=15)
+
+        encabezado = ctk.CTkFrame(panel, fg_color="transparent")
+        encabezado.pack(fill="x", padx=18, pady=(18, 10))
         
-        self.lbl_prof_seleccionado = ctk.CTkLabel(panel, text="Horario Semanal", font=ctk.CTkFont(size=16, weight="bold"))
-        self.lbl_prof_seleccionado.pack(anchor="w", padx=15, pady=(15, 10))
+        frame_titulo = ctk.CTkFrame(encabezado, fg_color="transparent")
+        frame_titulo.pack(fill="x")
+
+        self.lbl_prof_seleccionado = ctk.CTkLabel(frame_titulo, text="🗓  Horario Semanal", font=fuentes.seccion(size=17), text_color=colores.TEXTO_PRIMARIO)
+        self.lbl_prof_seleccionado.pack(side="left", anchor="w")
+
+        # Botón para regresar al menú principal
+        btn_volver_menu = ctk.CTkButton(
+            frame_titulo, text="Volver al Menu principal", width=120, height=32, corner_radius=8,
+            font=fuentes.boton(size=12), fg_color=colores.NEUTRO,
+            hover_color=colores.NEUTRO_HOVER, command=self.regresar_al_menu
+        )
+        btn_volver_menu.pack(side="right", anchor="e")
+
+        ctk.CTkLabel(encabezado, text="Selecciona un docente de la lista para ver o editar su horario", font=fuentes.pequena(size=11), text_color=colores.TEXTO_SECUNDARIO).pack(anchor="w", pady=(2, 0))
+
+        horario_form = ctk.CTkFrame(panel, corner_radius=12, fg_color=colores.BG_PANEL_ALT, border_width=1, border_color=colores.BORDE_SUAVE)
+        horario_form.pack(fill="x", padx=15, pady=(4, 12), ipady=10)
+
+        self.cmb_dia = ctk.CTkOptionMenu(
+            horario_form, values=list(self.DIAS_MAPPING.keys()), width=120, height=34,
+            font=fuentes.cuerpo(size=12), fg_color=colores.BG_ENTRADA,
+            button_color=colores.ACENTO, button_hover_color=colores.ACENTO_HOVER,
+        )
+        self.cmb_dia.pack(side="left", padx=(12, 6), pady=4)
         
-        horario_form = ctk.CTkFrame(panel, fg_color="transparent")
-        horario_form.pack(fill="x", padx=15, pady=(0, 10))
-        
-        self.cmb_dia = ctk.CTkOptionMenu(horario_form, values=list(self.DIAS_MAPPING.keys()), width=120)
-        self.cmb_dia.pack(side="left", padx=(0, 5))
-        
-        self.ent_entrada = ctk.CTkEntry(horario_form, width=90, placeholder_text="07:00")
+        self.ent_entrada = ctk.CTkEntry(
+            horario_form, width=90, height=34, placeholder_text="07:00",
+            font=fuentes.cuerpo(size=13), fg_color=colores.BG_ENTRADA, border_color=colores.BORDE,
+        )
         self.ent_entrada.pack(side="left", padx=5)
         self.aplicar_formato_hora(self.ent_entrada)
         
-        self.ent_salida = ctk.CTkEntry(horario_form, width=90, placeholder_text="12:00")
+        self.ent_salida = ctk.CTkEntry(
+            horario_form, width=90, height=34, placeholder_text="12:00",
+            font=fuentes.cuerpo(size=13), fg_color=colores.BG_ENTRADA, border_color=colores.BORDE,
+        )
         self.ent_salida.pack(side="left", padx=5)
         self.aplicar_formato_hora(self.ent_salida)
         
-        ctk.CTkButton(horario_form, text="+ Agregar Turno", command=self.guardar_horario).pack(side="left", padx=(5, 0), fill="x", expand=True)
+        ctk.CTkButton(
+            horario_form, text="+  Agregar Turno", command=self.guardar_horario,
+            height=34, corner_radius=9, font=fuentes.boton(size=12),
+            fg_color=colores.EXITO, hover_color=colores.EXITO_HOVER,
+        ).pack(side="left", padx=(5, 12), fill="x", expand=True)
         
         self.scroll_horarios = ctk.CTkScrollableFrame(panel, fg_color="transparent")
         self.scroll_horarios.pack(fill="both", expand=True, padx=10, pady=(0, 15))
+
+    def regresar_al_menu(self):
+        if self.parent:
+            self.parent.wm_state('normal')  
+            self.parent.deiconify()          
+        self.destroy()                       
 
     def cargar_lista_profesores(self):
         try:
@@ -149,7 +207,7 @@ class VentanaGestionDocentes(ctk.CTk):
 
     def seleccionar_profesor(self, profesor):
         self.profesor_seleccionado = profesor
-        self.lbl_prof_seleccionado.configure(text=f"Horario: {profesor['nombre'].title()}")
+        self.lbl_prof_seleccionado.configure(text=f"🗓  Horario: {profesor['nombre'].title()}")
         inicio = (self.pagina_actual - 1) * self.ELEMENTOS_POR_PAGINA
         pagina_items = self.profesores_filtrados[inicio:inicio + self.ELEMENTOS_POR_PAGINA]
         for i, prof in enumerate(pagina_items):
@@ -183,7 +241,7 @@ class VentanaGestionDocentes(ctk.CTk):
                 card.configure(
                     fg_color=colores.COLOR_SELECCIONADO if seleccionado else colores.COLOR_TARJETA, 
                     border_color=colores.COLOR_SELECCIONADO_BORDE if seleccionado else colores.COLOR_TARJETA_BORDE,
-                    border_width=1,
+                    border_width=2 if seleccionado else 1,
                     cursor="hand2"
                 )
                 lbl_area.configure(text_color=colores.COLOR_TEXTO_AREA_SEL if seleccionado else colores.COLOR_TEXTO_AREA)
@@ -232,14 +290,14 @@ class VentanaGestionDocentes(ctk.CTk):
             return
         horarios = db.obtener_horarios_profesor(self.profesor_seleccionado['id_profesor'])
         if not horarios:
-            ctk.CTkLabel(self.scroll_horarios, text="No hay horarios asignados", text_color="#777777").pack(pady=20)
+            ctk.CTkLabel(self.scroll_horarios, text="📭  No hay horarios asignados", font=fuentes.cuerpo(size=13), text_color=colores.TEXTO_TENUE).pack(pady=20)
             return
         for h in horarios:
-            row = ctk.CTkFrame(self.scroll_horarios, fg_color=colores.COLOR_TARJETA, height=40)
+            row = ctk.CTkFrame(self.scroll_horarios, fg_color=colores.COLOR_TARJETA, corner_radius=10, border_width=1, border_color=colores.COLOR_TARJETA_BORDE, height=40)
             row.pack(fill="x", pady=4, padx=2)
-            texto_horario = f" {h['nombre_dia']} - Entrada: {h['hora_entrada']} hrs - Salida: {h['hora_salida']} hrs"
-            ctk.CTkLabel(row, text=texto_horario, font=ctk.CTkFont(size=13)).pack(side="left", padx=15, pady=8)
-            ctk.CTkButton(row, text="Eliminar", width=70, fg_color=colores.COLOR_BTN_ELIMINAR, hover_color=colores.COLOR_BTN_ELIMINAR_HOVER, command=lambda hid=h['id_horario']: self.borrar_horario(hid)).pack(side="right", padx=10)
+            texto_horario = f"🕑  {h['nombre_dia']}   ·   Entrada {h['hora_entrada']} hrs   ·   Salida {h['hora_salida']} hrs"
+            ctk.CTkLabel(row, text=texto_horario, font=fuentes.cuerpo(size=13), text_color=colores.TEXTO_PRIMARIO).pack(side="left", padx=15, pady=8)
+            ctk.CTkButton(row, text="Eliminar", width=70, height=28, corner_radius=7, font=fuentes.pequena(size=11), fg_color=colores.COLOR_BTN_ELIMINAR, hover_color=colores.COLOR_BTN_ELIMINAR_HOVER, command=lambda hid=h['id_horario']: self.borrar_horario(hid)).pack(side="right", padx=10)
 
     def guardar_horario(self):
         if not self.profesor_seleccionado:
