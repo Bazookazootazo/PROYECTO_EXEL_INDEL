@@ -12,7 +12,7 @@ app.title("Menú de Inicio - Control de Acceso")
 app.configure(fg_color=colores.BG_VENTANA)
 
 # --- 1. CONFIGURACIÓN Y CENTRADO DE LA VENTANA PRINCIPAL ---
-ANCHO, ALTO = 860, 580
+ANCHO, ALTO = 960, 840
 
 def centrar_ventana(ventana, ancho, alto):
     ventana.update_idletasks()
@@ -141,7 +141,7 @@ lbl_icon_subir.pack(expand=True)
 
 lbl_title_subir = ctk.CTkLabel(
     master=card_subir,
-    text="Procesar Registros",
+    text="Limpiar y guardar archivos de asistencia",
     font=fuentes.seccion(size=17),
     text_color=colores.TEXTO_PRIMARIO,
 )
@@ -149,7 +149,7 @@ lbl_title_subir.pack()
 
 lbl_desc_subir = ctk.CTkLabel(
     master=card_subir,
-    text="Importa, limpia y depura las\nchecadas de asistencia (CSV/Excel).",
+    text="importa, limpia y guarda archivos de \nasistencia para la generacion de reportes.",
     font=fuentes.cuerpo(size=12),
     text_color=colores.TEXTO_SECUNDARIO,
     justify="center",
@@ -221,6 +221,57 @@ btn_docentes = ctk.CTkButton(
 )
 btn_docentes.pack(fill="x", padx=22, pady=(0, 22))
 
+#tarjeta 3: generacion de reportes
+card_generador = ctk.CTkFrame(
+    master=cards_container,
+    corner_radius=16,
+    fg_color=colores.BG_PANEL_ALT,
+    border_width=1,
+    border_color=colores.BORDE,
+)
+card_generador.grid(row=1, column=0, columnspan=10,padx=10, pady=10, sticky="nsew")   
+
+icono_generador_bg = ctk.CTkFrame(
+    master=card_generador, fg_color="#352A12", corner_radius=14,
+    width=64, height=64,
+)
+icono_generador_bg.pack(pady=(26, 12))
+icono_generador_bg.pack_propagate(False)
+
+lbl_icon_generador = ctk.CTkLabel(
+    master=icono_generador_bg, text="📋", font=ctk.CTkFont(size=28)
+)
+lbl_icon_generador.pack(expand=True)
+
+lbl_title_generador = ctk.CTkLabel(
+    master=card_generador,
+    text="Generacion de reporte de asistencia",
+    font=fuentes.seccion(size=17),
+    text_color=colores.TEXTO_PRIMARIO,
+)
+lbl_title_generador.pack()
+
+lbl_desc_generador = ctk.CTkLabel(
+    master=card_generador,
+    text="Genera reportes quincenales \nsobre la asistencia de los docentes",
+    font=fuentes.cuerpo(size=12),
+    text_color=colores.TEXTO_SECUNDARIO,
+    justify="center",
+)
+lbl_desc_generador.pack(pady=(6,18))
+
+btn_generador = ctk.CTkButton(
+    master=card_generador,
+    text="Abrir modulo",
+    font=fuentes.boton(size=13),
+    height=40,
+    corner_radius=10,
+    fg_color="#EEA942",
+    hover_color="#AA7526",
+    text_color=colores.TEXTO_SOBRE_ACENTO,
+    command=abrir_gestion_docentes,
+)
+btn_generador.pack(fill="x", padx=22, pady=(0, 22))
 # Separador
 separador = ctk.CTkFrame(master=main_card, fg_color=colores.BORDE_SUAVE, height=1)
 separador.pack(fill="x", padx=40, pady=(4, 0))

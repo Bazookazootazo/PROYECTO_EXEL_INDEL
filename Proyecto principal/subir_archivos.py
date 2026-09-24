@@ -7,16 +7,18 @@ import customtkinter as ctk
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import pandas as pd
+import mysql.connector
 
 ANCHO, ALTO = 1100, 720
+
 def centrar_ventana(ventana, ancho, alto):
     ventana.update_idletasks()
     pos_x = int((ventana.winfo_screenwidth() / 2) - (ancho / 2))
     pos_y = int((ventana.winfo_screenheight() / 2) - (alto / 2))
     ventana.geometry(f"{ancho}x{alto}+{pos_x}+{pos_y}")
 
-
 from utilerias.paleta_colores import colores, fuentes
+
 class VentanaSubirArchivos(ctk.CTkToplevel):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -32,7 +34,17 @@ class VentanaSubirArchivos(ctk.CTkToplevel):
         self.ruta_archivo = []
         self._crear_interfaz()
 
-    # --- FUNCIONES DE LÓGICA DE NEGOCIO (MÉTODOS ESTÁTICOS / AUXILIARES) ---
+    # --- CONEXIÓN A BASE DE DATOS ---
+    @staticmethod
+    def obtener_conexion_bd():
+        return mysql.connector.connect(
+            host="localhost",
+            user="root",        # Cambia por tu usuario de MySQL
+            password="",        # Cambia por tu contraseña de MySQL
+            database="control_asistencia" # Tu base de datos
+        )
+
+    # --- FUNCIONES DE LÓGICA DE NEGOCIO ---
 
     @staticmethod
     def _detectar_encoding_por_bom(ruta):
@@ -210,7 +222,7 @@ class VentanaSubirArchivos(ctk.CTkToplevel):
 
         return pd.to_datetime(val_str, dayfirst=dia_primero, errors='coerce')
 
-    # --- MÉTODOS DE CONTROL DE INTERFAZ ---
+    # --- MÉTODOS DE CONTROL DE INTERFAZ Y BASE DE DATOS ---
 
     def procesar_archivo(self):
         if not self.ruta_archivo:
@@ -240,6 +252,7 @@ class VentanaSubirArchivos(ctk.CTkToplevel):
             if df_final.empty:
                 raise ValueError("No se pudieron extraer datos válidos. Revisa la estructura del archivo cargado.")
 
+            # Filtrar registros continuos a menos de 15 minutos por profesor
             dfs_filtrados = []
             for nombre, grupo in df_final.groupby('nombre'):
                 filas_validas = []
@@ -257,35 +270,67 @@ class VentanaSubirArchivos(ctk.CTkToplevel):
             else:
                 df_filtrado = pd.DataFrame(columns=df_final.columns)
 
-            df_filtrado['fecha'] = df_filtrado['fecha_dt'].dt.strftime('%d/%m/%Y %H:%M:%S')
-            df_final = df_filtrado.drop(columns=['fecha_dt'])
-
         except Exception as e:
             self.actualizar_estado("Error durante el procesamiento", colores.ESTADO_ERROR)
             messagebox.showerror("Error de Procesamiento", f"Ocurrió un problema al procesar los archivos:\n{e}", parent=self)
             return
 
-        ruta_guardado = filedialog.asksaveasfilename(
-            title="Guardar archivo como...",
-            defaultextension=".csv",
-            filetypes=[("Archivos CSV", "*.csv"), ("Archivos Excel", "*.xlsx")],
-            parent=self
-        )
+        # --- GUARDAR DIRECTAMENTE EN BASE DE DATOS ---
+        try:
+            self.actualizar_estado("Guardando registros en la base de datos...", colores.ESTADO_PROCESANDO)
+            self.update()
 
-        if ruta_guardado:
-            try:
-                if ruta_guardado.endswith('.csv'):
-                    with open(ruta_guardado, 'w', encoding='utf-8-sig', newline='') as f:
-                        f.write('sep=;\n')
-                        df_final.to_csv(f, index=False, sep=';')
+            conn = self.obtener_conexion_bd()
+            cursor = conn.cursor()
+
+            # 1. Obtener catálogo de profesores para mapear nombre -> id_profesor
+            cursor.execute("SELECT id_profesor, nombre FROM profesores")
+            profesores = cursor.fetchall()
+            dict_profesores = {nombre.strip().lower(): id_prof for id_prof, nombre in profesores}
+
+            registros_insertados = 0
+            profesores_no_encontrados = set()
+
+            # 2. Insertar cada checada procesada
+            sql_insert = "INSERT IGNORE INTO checadas (id_profesor, fecha_hora) VALUES (%s, %s)"
+
+            registros_a_insertar = []
+            for _, fila in df_filtrado.iterrows():
+                nombre_docente = str(fila['nombre']).strip().lower()
+                id_profesor = dict_profesores.get(nombre_docente)
+
+                if id_profesor:
+                    fecha_mysql = fila['fecha_dt'].strftime('%Y-%m-%d %H:%M:%S')
+                    registros_a_insertar.append((id_profesor, fecha_mysql))
                 else:
-                    df_final.to_excel(ruta_guardado, index=False)
+                    profesores_no_encontrados.add(fila['nombre'])
 
-                self.actualizar_estado("¡Procesamiento completado con éxito!", colores.ESTADO_EXITO)
-                messagebox.showinfo("Éxito", "El archivo fue procesado y guardado correctamente.", parent=self)
-            except Exception as e:
-                self.actualizar_estado("Error al guardar el archivo", colores.ESTADO_ERROR)
-                messagebox.showerror("Error al Guardar", f"No se pudo guardar el archivo:\n{e}", parent=self)
+            if registros_a_insertar:
+                cursor.executemany(sql_insert, registros_a_insertar)
+                conn.commit()
+                registros_insertados = cursor.rowcount
+
+            cursor.close()
+            conn.close()
+
+            self.actualizar_estado("¡Procesamiento completado con éxito!", colores.ESTADO_EXITO)
+            
+            # Mensaje de confirmación solicitado
+            mensaje = f"las checacas fueron procesadas correctamente.\n\n" \
+                      f"• Registros guardados/actualizados: {registros_insertados}"
+            
+            if profesores_no_encontrados:
+                mensaje += f"\n\nNota: Hubo {len(profesores_no_encontrados)} docente(s) en el archivo que no están registrados en la BD."
+
+            messagebox.showinfo("Éxito", mensaje, parent=self)
+            self.limpiar_lista()
+
+        except mysql.connector.Error as db_err:
+            self.actualizar_estado("Error de base de datos", colores.ESTADO_ERROR)
+            messagebox.showerror("Error de BD", f"No se pudo guardar en la base de datos:\n{db_err}", parent=self)
+        except Exception as e:
+            self.actualizar_estado("Error al guardar", colores.ESTADO_ERROR)
+            messagebox.showerror("Error al Guardar", f"Ocurrió un fallo inesperado al guardar:\n{e}", parent=self)
 
     def subir_archivo(self):
         rutas_nuevas = filedialog.askopenfilenames(
@@ -372,7 +417,7 @@ class VentanaSubirArchivos(ctk.CTkToplevel):
 
         lbl_subtitulo = ctk.CTkLabel(
             master=title_box,
-            text="Unificación de reportes y depuración automática de checadas duplicadas",
+            text="Depuracion de checadas de docentes y generacion de reportes de asistencia, favor de agregar el archivo de registro de checadas (CSV/Excel) para procesar.",
             font=fuentes.cuerpo(size=13),
             text_color=colores.TEXTO_SECUNDARIO,
         )
@@ -402,6 +447,18 @@ class VentanaSubirArchivos(ctk.CTkToplevel):
         )
         btn_subir_archivo.pack(fill="x", padx=20, pady=8)
 
+        btn_procesar = ctk.CTkButton(
+            master=actions_group,
+            text="Procesar y Guardar",
+            fg_color=colores.EXITO,
+            hover_color=colores.EXITO_HOVER,
+            font=fuentes.boton(size=14),
+            corner_radius=10,
+            height=48,
+            command=self.procesar_archivo
+        )
+        btn_procesar.pack(fill="x", padx=20, pady=(8))
+
         btn_limpiar = ctk.CTkButton(
             master=actions_group,
             text="Limpiar Lista",
@@ -413,35 +470,7 @@ class VentanaSubirArchivos(ctk.CTkToplevel):
             height=40,
             command=self.limpiar_lista
         )
-        btn_limpiar.pack(fill="x", padx=20, pady=4)
-
-        separador_acciones = ctk.CTkFrame(master=actions_group, fg_color=colores.BORDE_SUAVE, height=1)
-        separador_acciones.pack(fill="x", padx=20, pady=(10, 4))
-
-        btn_procesar = ctk.CTkButton(
-            master=actions_group,
-            text="Procesar y Guardar",
-            fg_color=colores.EXITO,
-            hover_color=colores.EXITO_HOVER,
-            font=fuentes.boton(size=14),
-            corner_radius=10,
-            height=48,
-            command=self.procesar_archivo
-        )
-        btn_procesar.pack(fill="x", padx=20, pady=(0, 10))
-
-        btn_volver_al_menu = ctk.CTkButton(
-            master=actions_group,
-            text="Volver al menu principal",
-            fg_color=colores.NEUTRO,
-            hover_color=colores.NEUTRO_HOVER,
-            font=fuentes.boton(size=14),
-            corner_radius=10,
-            height=44,
-            command=self.regresar_al_menu
-        )
-        btn_volver_al_menu.pack(fill="x", padx=20, pady=(2, 4))
-
+        btn_limpiar.pack(fill="x", padx=20, pady=8)
         right_frame = ctk.CTkFrame(master=work_frame, fg_color=colores.BG_PANEL_ALT, corner_radius=14, border_width=1, border_color=colores.BORDE_SUAVE)
         right_frame.pack(side="right", fill="both", expand=True)
 
@@ -483,13 +512,47 @@ class VentanaSubirArchivos(ctk.CTkToplevel):
         )
         self.lbl_estado_texto.pack(side="left")
 
+        #pie de pagina
+        footer_frame= ctk.CTkFrame(master=main_card, fg_color="transparent")
+        footer_frame.pack(fill="x", padx=25, pady=(0, 15))
 
-# Permite ejecutar este archivo directamente para hacer pruebas sin abrir el menú principal
+        btn_volver_al_menu = ctk.CTkButton(
+                    master=footer_frame,
+                    text="Volver al menu principal",
+                    font=fuentes.boton(size=13),
+                    height=36,
+                    width=170,
+                    corner_radius=10,
+                    fg_color=colores.NEUTRO,
+                    hover_color=colores.NEUTRO_HOVER,
+                    text_color=colores.TEXTO_PRIMARIO,
+                    command=self.regresar_al_menu
+                )
+        btn_volver_al_menu.pack(side="right")
+
+        btn_generar_reporte = ctk.CTkButton(
+            master=footer_frame,
+            text="generar Reporte de Asistencia",
+            font=fuentes.boton(size=13),
+            height=36,
+            width=170,
+            corner_radius=10,
+            fg_color="#EEA942",
+            hover_color="#AA7526",
+            text_color=colores.TEXTO_SOBRE_ACENTO,
+            command=self.regresar_al_menu
+        )
+        btn_generar_reporte.pack(side="right", padx=(0, 10))
+
+    
+
+
+
 if __name__ == "__main__":
     ctk.set_appearance_mode("dark")
     ctk.set_default_color_theme("blue")
     root = ctk.CTk()
-    root.withdraw()  # Oculta la ventana raíz de prueba
+    root.withdraw()
     ventana = VentanaSubirArchivos(root)
     ventana.protocol("WM_DELETE_WINDOW", root.destroy)
     root.mainloop()
