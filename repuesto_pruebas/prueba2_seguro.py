@@ -12,6 +12,51 @@ from utilerias.paleta_colores import colores, fuentes
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
+class FormularioHorarioWidget(ctk.CTkFrame):
+    """Componente nuevo para aislar la estructura visual del formulario."""
+    def __init__(self, parent, dias_mapping, on_guardar):
+        super().__init__(parent, corner_radius=12, fg_color=colores.BG_PANEL_ALT, border_width=1, border_color=colores.BORDE_SUAVE)
+        self.dias_mapping = dias_mapping
+        self.on_guardar = on_guardar
+        self.id_horario_editando = None
+
+        self._construir_interfaz()
+
+    def _construir_interfaz(self):
+        # Conservamos los nombres originales como atributos del componente
+        self.cmb_dia = ctk.CTkOptionMenu(
+            self, values=list(self.dias_mapping.keys()), width=110, height=34,
+            font=fuentes.cuerpo(size=12), fg_color=colores.BG_ENTRADA,
+            button_color=colores.ACENTO, button_hover_color=colores.ACENTO_HOVER,
+        )
+        self.cmb_dia.pack(side="left", padx=(12, 6), pady=8)
+
+        self.ent_entrada = ctk.CTkEntry(
+            self, width=80, height=34, placeholder_text="07:00",
+            font=fuentes.cuerpo(size=13), fg_color=colores.BG_ENTRADA, border_color=colores.BORDE,
+        )
+        self.ent_entrada.pack(side="left", padx=4, pady=8)
+        aplicar_formato_hora(self.ent_entrada)
+
+        self.ent_salida = ctk.CTkEntry(
+            self, width=80, height=34, placeholder_text="12:00",
+            font=fuentes.cuerpo(size=13), fg_color=colores.BG_ENTRADA, border_color=colores.BORDE,
+        )
+        self.ent_salida.pack(side="left", padx=4, pady=8)
+        aplicar_formato_hora(self.ent_salida)
+
+        self.btn_accion_horario = ctk.CTkButton(
+            self, text="+ Agregar", command=self.on_guardar,
+            height=34, corner_radius=9, font=fuentes.boton(size=12),
+            fg_color=colores.EXITO, hover_color=colores.EXITO_HOVER, width=90
+        )
+        self.btn_accion_horario.pack(side="left", padx=6, pady=8)
+
+        self.btn_cancelar_edicion = ctk.CTkButton(
+            self, text="✕", width=34, height=34, corner_radius=9, font=fuentes.boton(size=12),
+            fg_color=colores.NEUTRO, hover_color=colores.NEUTRO_HOVER
+        )
+
 class VentanaGestionDocentes(ctk.CTkToplevel):
     DIAS_MAPPING = {"Lunes": 1, "Martes": 2, "Miércoles": 3, "Jueves": 4, "Viernes": 5}
     ELEMENTOS_POR_PAGINA = 10
@@ -25,6 +70,7 @@ class VentanaGestionDocentes(ctk.CTkToplevel):
         self.seleccion = set()                  # IDs marcados para acciones en bloque
         self.pagina_actual = 1
         self.pool_tarjetas = []
+        self.id_horario_editando = None         # None = Creando nuevo turno | ID = Editando turno existente
         
         self._configurar_ventana()
         self._construir_panel_izquierdo()
@@ -113,7 +159,7 @@ class VentanaGestionDocentes(ctk.CTkToplevel):
         self.btn_next.pack(side="right")
 
     def _crear_pool_tarjetas(self):
-        """Crea el pool fijo de tarjetas optimizado para alojar las 10 celdas sin desbordamiento."""
+        """Crea el pool fijo de tarjetas optimizado con altura de 38px y grilla unificada."""
         for i in range(self.ELEMENTOS_POR_PAGINA):
             card = ctk.CTkFrame(self.container_profesores, fg_color=colores.COLOR_TARJETA, corner_radius=8, border_width=1, border_color=colores.COLOR_TARJETA_BORDE, cursor="hand2", height=38)
             card.grid_propagate(False)
@@ -183,38 +229,47 @@ class VentanaGestionDocentes(ctk.CTkToplevel):
 
         ctk.CTkLabel(encabezado, text="Selecciona un docente de la lista para ver o editar su horario", font=fuentes.pequena(size=11), text_color=colores.TEXTO_SECUNDARIO).pack(anchor="w", pady=(2, 0))
 
-        horario_form = ctk.CTkFrame(panel, corner_radius=12, fg_color=colores.BG_PANEL_ALT, border_width=1, border_color=colores.BORDE_SUAVE)
-        horario_form.grid(row=1, column=0, sticky="ew", padx=15, pady=(4, 12))
-
-        self.cmb_dia = ctk.CTkOptionMenu(
-            horario_form, values=list(self.DIAS_MAPPING.keys()), width=120, height=34,
-            font=fuentes.cuerpo(size=12), fg_color=colores.BG_ENTRADA,
-            button_color=colores.ACENTO, button_hover_color=colores.ACENTO_HOVER,
+        # Integración limpia del nuevo componente (aquí eliminamos el viejo `horario_form`)
+        self.form_horario = FormularioHorarioWidget(
+            panel, 
+            dias_mapping=self.DIAS_MAPPING, 
+            on_guardar=self.guardar_o_actualizar_horario
         )
-        self.cmb_dia.pack(side="left", padx=(12, 6), pady=8)
+        self.form_horario.grid(row=1, column=0, sticky="ew", padx=15, pady=(4, 12))
 
-        self.ent_entrada = ctk.CTkEntry(
-            horario_form, width=90, height=34, placeholder_text="07:00",
-            font=fuentes.cuerpo(size=13), fg_color=colores.BG_ENTRADA, border_color=colores.BORDE,
-        )
-        self.ent_entrada.pack(side="left", padx=5, pady=8)
-        aplicar_formato_hora(self.ent_entrada)
+        # Referencias directas para mantener compatibilidad total con el código existente
+        self.cmb_dia = self.form_horario.cmb_dia
+        self.ent_entrada = self.form_horario.ent_entrada
+        self.ent_salida = self.form_horario.ent_salida
+        self.btn_accion_horario = self.form_horario.btn_accion_horario
+        self.btn_cancelar_edicion = self.form_horario.btn_cancelar_edicion
+        self.btn_cancelar_edicion.configure(command=self.cancelar_edicion_horario)
 
-        self.ent_salida = ctk.CTkEntry(
-            horario_form, width=90, height=34, placeholder_text="12:00",
-            font=fuentes.cuerpo(size=13), fg_color=colores.BG_ENTRADA, border_color=colores.BORDE,
-        )
-        self.ent_salida.pack(side="left", padx=5, pady=8)
-        aplicar_formato_hora(self.ent_salida)
-
-        ctk.CTkButton(
-            horario_form, text="+  Agregar Turno", command=self.guardar_horario,
-            height=34, corner_radius=9, font=fuentes.boton(size=12),
-            fg_color=colores.EXITO, hover_color=colores.EXITO_HOVER,
-        ).pack(side="left", padx=(5, 12), fill="x", expand=True, pady=8)
-
+        # Única declaración correcta del scroll de horarios
         self.scroll_horarios = ctk.CTkScrollableFrame(panel, fg_color="transparent")
         self.scroll_horarios.grid(row=3, column=0, sticky="nsew", padx=10, pady=(0, 15))
+
+    def iniciar_edicion_horario(self, turno):
+        """Mantiene el nombre original y delega la lógica visual."""
+        self.id_horario_editando = turno['id_horario']
+        self.form_horario.id_horario_editando = self.id_horario_editando
+        self.cmb_dia.set(turno['nombre_dia'])
+        self.ent_entrada.delete(0, 'end')
+        self.ent_entrada.insert(0, turno['hora_entrada'])
+        self.ent_salida.delete(0, 'end')
+        self.ent_salida.insert(0, turno['hora_salida'])
+        
+        self.btn_accion_horario.configure(text="💾 Guardar", fg_color=colores.ACENTO, hover_color=colores.ACENTO_HOVER)
+        self.btn_cancelar_edicion.pack(side="left", padx=(0, 6), pady=8)
+
+    def cancelar_edicion_horario(self):
+        """Mantiene el nombre original y restablece los estados."""
+        self.id_horario_editando = None
+        self.form_horario.id_horario_editando = None
+        self.ent_entrada.delete(0, 'end')
+        self.ent_salida.delete(0, 'end')
+        self.btn_accion_horario.configure(text="+ Agregar", fg_color=colores.EXITO, hover_color=colores.EXITO_HOVER)
+        self.btn_cancelar_edicion.pack_forget()
 
     def regresar_al_menu(self):
         if self.parent:
@@ -273,6 +328,7 @@ class VentanaGestionDocentes(ctk.CTkToplevel):
     def seleccionar_profesor(self, profesor):
         self.profesor_seleccionado = profesor
         self.lbl_prof_seleccionado.configure(text=f"🗓  Horario: {profesor['nombre'].title()}")
+        self.cancelar_edicion_horario()
         self._pintar_tarjetas()
         self.cargar_horarios_profesor()
 
@@ -291,7 +347,7 @@ class VentanaGestionDocentes(ctk.CTkToplevel):
 
             if i < len(pagina_items):
                 prof = pagina_items[i]
-                card.profesor_asociado = prof  
+                card.profesor_asociado = prof
                 
                 estilo_tarjeta, color_area = self._estilo_tarjeta(prof)
                 lbl_nombre.configure(text=f"{prof['nombre'].title()}")
@@ -306,7 +362,7 @@ class VentanaGestionDocentes(ctk.CTkToplevel):
                 item["btn_edit"].configure(command=lambda p=prof: self.abrir_ventana_edicion(p))
                 item["btn_del"].configure(command=lambda p=prof: self.eliminar_docente(p))
 
-                card.grid(row=i, column=0, sticky="ew", pady=2, padx=2)
+                card.grid(row=i, column=0, sticky="ew", pady=1, padx=2)
                 item["btn_frame"].grid()
             else:
                 card.profesor_asociado = None
@@ -314,7 +370,7 @@ class VentanaGestionDocentes(ctk.CTkToplevel):
                 lbl_area.configure(text="")
                 item["btn_frame"].grid_remove()
                 item["chk"].grid_remove()
-                card.grid_remove()  # Oculta limpiamente las tarjetas sobrantes del pool
+                card.grid_remove()
 
         total_pags = self.total_paginas()
         self.lbl_paginacion.configure(text=f"Pág {self.pagina_actual} / {total_pags}")
@@ -351,9 +407,31 @@ class VentanaGestionDocentes(ctk.CTkToplevel):
             
             texto_horario = f"🕑  {h['nombre_dia']}   ·   Entrada {h['hora_entrada']} hrs   ·   Salida {h['hora_salida']} hrs"
             ctk.CTkLabel(row, text=texto_horario, font=fuentes.cuerpo(size=13), text_color=colores.TEXTO_PRIMARIO, anchor="w").pack(side="left", padx=15, pady=8, fill="x", expand=True)
-            ctk.CTkButton(row, text="Eliminar", width=70, height=28, corner_radius=7, font=fuentes.pequena(size=11), fg_color=colores.COLOR_BTN_ELIMINAR, hover_color=colores.COLOR_BTN_ELIMINAR_HOVER, command=lambda hid=h['id_horario']: self.borrar_horario(hid)).pack(side="right", padx=10)
+            
+            ctk.CTkButton(row, text="Eliminar", width=65, height=28, corner_radius=7, font=fuentes.pequena(size=11), fg_color=colores.COLOR_BTN_ELIMINAR, hover_color=colores.COLOR_BTN_ELIMINAR_HOVER, command=lambda hid=h['id_horario']: self.borrar_horario(hid)).pack(side="right", padx=10)
+            ctk.CTkButton(row, text="Editar", width=55, height=28, corner_radius=7, font=fuentes.pequena(size=11), fg_color=colores.COLOR_BTN_EDITAR, hover_color=colores.COLOR_BTN_EDITAR_HOVER, command=lambda turno=h: self.iniciar_edicion_horario(turno)).pack(side="right", padx=2)
 
-    def guardar_horario(self):
+    def iniciar_edicion_horario(self, turno):
+        """Carga el turno seleccionado en el formulario superior para editarlo individualmente."""
+        self.id_horario_editando = turno['id_horario']
+        self.cmb_dia.set(turno['nombre_dia'])
+        self.ent_entrada.delete(0, 'end')
+        self.ent_entrada.insert(0, turno['hora_entrada'])
+        self.ent_salida.delete(0, 'end')
+        self.ent_salida.insert(0, turno['hora_salida'])
+        
+        self.btn_accion_horario.configure(text="💾 Guardar", fg_color=colores.ACENTO, hover_color=colores.ACENTO_HOVER)
+        self.btn_cancelar_edicion.pack(side="left", padx=(0, 6), pady=8)
+
+    def cancelar_edicion_horario(self):
+        """Vuelve el formulario al estado por defecto (crear nuevo turno)."""
+        self.id_horario_editando = None
+        self.ent_entrada.delete(0, 'end')
+        self.ent_salida.delete(0, 'end')
+        self.btn_accion_horario.configure(text="+ Agregar", fg_color=colores.EXITO, hover_color=colores.EXITO_HOVER)
+        self.btn_cancelar_edicion.pack_forget()
+
+    def guardar_o_actualizar_horario(self):
         if not self.profesor_seleccionado:
             mostrar_advertencia("Atención", "Primero selecciona a alguien de la lista.", master=self)
             return
@@ -362,18 +440,27 @@ class VentanaGestionDocentes(ctk.CTkToplevel):
         except ValueError as e:
             mostrar_advertencia("Atención", str(e), master=self)
             return
+            
         id_dia = self.DIAS_MAPPING[self.cmb_dia.get()]
         prof = self.profesor_seleccionado
+        
         try:
-            estado, existente = ops.revisar_turno(db.obtener_horarios_profesor(prof['id_profesor']), id_dia, entrada, salida)
-            if estado == "repetido":
-                mostrar_advertencia("Turno repetido", f"{prof['nombre'].title()} ya tiene ese turno el {self.cmb_dia.get()}.", master=self)
-                return
-            if estado == "traslape" and not mostrar_pregunta(
-                    "Turno traslapado", f"{prof['nombre'].title()} ya tiene {self.cmb_dia.get()} {existente['hora_entrada']}–{existente['hora_salida']}, "
-                    f"que se traslapa con {entrada}–{salida}.\n\n¿Agregarlo de todos modos?", master=self):
-                return
-            db.agregar_horario(prof['id_profesor'], id_dia, entrada, salida)
+            if self.id_horario_editando is None:
+                # CREACIÓN NUEVA
+                estado, existente = ops.revisar_turno(db.obtener_horarios_profesor(prof['id_profesor']), id_dia, entrada, salida)
+                if estado == "repetido":
+                    mostrar_advertencia("Turno repetido", f"{prof['nombre'].title()} ya tiene ese turno el {self.cmb_dia.get()}.", master=self)
+                    return
+                if estado == "traslape" and not mostrar_pregunta(
+                        "Turno traslapado", f"{prof['nombre'].title()} ya tiene {self.cmb_dia.get()} {existente['hora_entrada']}–{existente['hora_salida']}, "
+                        f"que se traslapa con {entrada}–{salida}.\n\n¿Agregarlo de todos modos?", master=self):
+                    return
+                db.agregar_horario(prof['id_profesor'], id_dia, entrada, salida)
+            else:
+                # ACTUALIZACIÓN INDIVIDUAL
+                db.actualizar_horario(self.id_horario_editando, id_dia, entrada, salida)
+                self.cancelar_edicion_horario()
+
             self.ent_entrada.delete(0, 'end')
             self.ent_salida.delete(0, 'end')
             self.cargar_horarios_profesor()
@@ -383,6 +470,8 @@ class VentanaGestionDocentes(ctk.CTkToplevel):
     def borrar_horario(self, id_horario):
         try:
             db.eliminar_horario(id_horario)
+            if self.id_horario_editando == id_horario:
+                self.cancelar_edicion_horario()
             self.cargar_horarios_profesor()
         except Exception as e:
             mostrar_error("Error", f"No se pudo eliminar el bloque:\n{e}", master=self)
@@ -391,25 +480,25 @@ class VentanaGestionDocentes(ctk.CTkToplevel):
 
     def _construir_barra_seleccion(self, panel):
         fila = ctk.CTkFrame(panel, fg_color="transparent")
-        fila.grid(row=3, column=0, sticky="ew", padx=15, pady=(0, 6))
+        fila.grid(row=3, column=0, sticky="ew", padx=15, pady=(0, 4))
         fila.grid_columnconfigure(0, weight=1)
 
         self.var_todos = ctk.BooleanVar(value=False)
         self.chk_todos = ctk.CTkCheckBox(
             fila, text="Seleccionar todos los resultados", variable=self.var_todos, command=self.alternar_todos,
-            checkbox_width=20, checkbox_height=20, corner_radius=5, fg_color=colores.ACENTO, hover_color=colores.ACENTO_HOVER,
+            checkbox_width=18, checkbox_height=18, corner_radius=4, fg_color=colores.ACENTO, hover_color=colores.ACENTO_HOVER,
             border_color=colores.BORDE_CLARO, font=fuentes.pequena(size=11), text_color=colores.TEXTO_SECUNDARIO,
         )
         self.chk_todos.grid(row=0, column=0, sticky="w")
 
         self.btn_limpiar_sel = ctk.CTkButton(
-            fila, text="", height=24, corner_radius=7, font=fuentes.boton(size=11), fg_color="transparent",
+            fila, text="", height=22, corner_radius=6, font=fuentes.boton(size=11), fg_color="transparent",
             hover_color=colores.NEUTRO, text_color=colores.ACENTO, command=self.limpiar_seleccion,
         )
         self.btn_limpiar_sel.grid(row=0, column=1, sticky="e")
 
-        self.barra_acciones = ctk.CTkFrame(panel, corner_radius=12, fg_color=colores.BG_PANEL_ALT, border_width=1, border_color=colores.BORDE_CLARO)
-        self.barra_acciones.grid(row=4, column=0, sticky="ew", padx=15, pady=(0, 8))
+        self.barra_acciones = ctk.CTkFrame(panel, corner_radius=10, fg_color=colores.BG_PANEL_ALT, border_width=1, border_color=colores.BORDE_CLARO)
+        self.barra_acciones.grid(row=4, column=0, sticky="ew", padx=15, pady=(0, 6))
         acciones = (("✏ Área/Tipo", "datos", colores.ACENTO, colores.ACENTO_HOVER),
                     ("＋ Turno", "asignar", colores.EXITO, colores.EXITO_HOVER),
                     ("－ Turno", "quitar", colores.ADVERTENCIA, colores.ADVERTENCIA_HOVER),
@@ -418,9 +507,9 @@ class VentanaGestionDocentes(ctk.CTkToplevel):
         for col, (texto, accion, color, hover) in enumerate(acciones):
             self.barra_acciones.grid_columnconfigure(col, weight=1, uniform="acciones")
             ctk.CTkButton(
-                self.barra_acciones, text=texto, width=1, height=32, corner_radius=8, font=fuentes.boton(size=11),
+                self.barra_acciones, text=texto, width=1, height=30, corner_radius=7, font=fuentes.boton(size=11),
                 fg_color=color, hover_color=hover, command=lambda a=accion: self.abrir_accion_bloque(a),
-            ).grid(row=0, column=col, sticky="ew", padx=4, pady=8)
+            ).grid(row=0, column=col, sticky="ew", padx=3, pady=6)
         self.barra_acciones.grid_remove()
 
     def _estilo_tarjeta(self, prof):

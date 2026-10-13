@@ -124,11 +124,24 @@ def _leer_csv(ruta):
 
 
 def leer_hojas(ruta):
-    """{nombre_hoja: DataFrame crudo (sin encabezado)} con todas las hojas que traen datos."""
+    """Lee únicamente las hojas con datos reales, descartando pestañas auxiliares u ocultas."""
     if os.path.splitext(ruta)[1].lower() in (".csv", ".txt", ".tsv"):
         return {"Datos": _leer_csv(ruta)}
+        
     hojas = pd.read_excel(ruta, sheet_name=None, header=None, dtype=str, keep_default_na=False)
-    return {nombre: df for nombre, df in hojas.items() if not df.empty}
+    
+    # Palabras clave para ignorar pestañas de soporte o plantilla interna
+    hojas_excluidas = {"ejemplo", "valores válidos", "valores validos", "plantilla", "instrucciones", "ayuda"}
+    hojas_filtradas = {}
+    
+    for nombre, df in hojas.items():
+        if df.empty:
+            continue
+        if any(exc in normalizar(nombre) for exc in hojas_excluidas):
+            continue
+        hojas_filtradas[nombre] = df
+        
+    return hojas_filtradas if hojas_filtradas else {n: df for n, df in hojas.items() if not df.empty}
 
 
 @dataclass
@@ -312,8 +325,8 @@ def _formato_nombre(nombre):
 
 class Importacion:
     MODOS = {
-        "agregar": "Se añaden los turnos que falten y se conservan los que ya tiene cada docente.",
-        "reemplazar": "El horario de cada docente del archivo quedará igual al archivo (se quitan los turnos que no aparezcan).",
+        "agregar": "Se añadirán únicamente los turnos nuevos y se conservarán intactos todos los horarios previos del docente.",
+        "reemplazar": "El horario se igualará estrictamente al archivo. Se ELIMINARÁN de forma permanente los turnos actuales que no figuren en este documento.",
     }
 
     def __init__(self, ruta):
@@ -573,45 +586,43 @@ class Importacion:
 # ───────────────────────────── Plantilla ─────────────────────────────
 
 def crear_plantilla(ruta):
-    """Excel de ejemplo con listas desplegables tomadas de los catálogos vigentes."""
+    """Genera una plantilla de Excel limpia y profesional con listas desplegables integradas."""
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill
     from openpyxl.worksheet.datavalidation import DataValidation
 
     wb = Workbook()
+    
+    # 1. Hoja principal de trabajo (limpia y lista para el usuario)
     ws = wb.active
     ws.title = "Docentes y horarios"
     encabezado = ["Nombre", "Área", "Tipo", "Día", "Entrada", "Salida"]
     ws.append(encabezado)
+    
     for c in ws[1]:
         c.font, c.fill = Font(bold=True, color="FFFFFF"), PatternFill("solid", fgColor="4F8FE8")
     for col, ancho in zip("ABCDEF", (32, 30, 18, 18, 10, 10)):
         ws.column_dimensions[col].width = ancho
 
+    # 2. Hoja oculta de catálogos (sostiene los menús desplegables sin estorbar visualmente)
     valores = wb.create_sheet("Valores válidos")
+    valores.sheet_state = 'hidden'
+    
     valores.append(["Áreas", "Tipos", "Días"])
     for i in range(max(len(AREAS), len(TIPOS), len(DIAS))):
-        valores.append([list(AREAS)[i] if i < len(AREAS) else None, list(TIPOS)[i] if i < len(TIPOS) else None,
-                        list(DIAS)[i] if i < len(DIAS) else None])
-    for col, ancho in zip("ABCE", (32, 18, 14, 90)):
+        valores.append([
+            list(AREAS)[i] if i < len(AREAS) else None,
+            list(TIPOS)[i] if i < len(TIPOS) else None,
+            list(DIAS)[i] if i < len(DIAS) else None
+        ])
+        
+    for col, ancho in zip("ABC", (32, 18, 14)):
         valores.column_dimensions[col].width = ancho
-    valores["E1"] = "Consejos"
-    for fila, consejo in enumerate((
-            "Una fila por turno: repite el nombre del docente en cada turno.",
-            "El Área y el Tipo basta con escribirlos en la primera fila de cada docente.",
-            "En Día puedes escribir «Lunes a Viernes» o «Lun, Mié».",
-            "Las horas pueden ir como 7, 7:00, 07:00 o 7am."), start=2):
-        valores.cell(row=fila, column=5, value=consejo)
+
+    # Enlace de las validaciones de datos con la hoja oculta
     for columna, n, letra in (("B", len(AREAS), "A"), ("C", len(TIPOS), "B"), ("D", len(DIAS), "C")):
         dv = DataValidation(type="list", formula1=f"='Valores válidos'!${letra}$2:${letra}${n + 1}", allow_blank=True, showErrorMessage=False)
         ws.add_data_validation(dv)
         dv.add(f"{columna}2:{columna}500")
 
-    ejemplo = wb.create_sheet("Ejemplo")
-    ejemplo.append(encabezado)
-    ejemplo.append(["Juan Pérez López", list(AREAS)[0], list(TIPOS)[0], "Lunes", "07:00", "12:00"])
-    ejemplo.append(["Juan Pérez López", None, None, "Miércoles", "07:00", "12:00"])
-    ejemplo.append(["María García Ruiz", list(AREAS)[1], list(TIPOS)[1], "Lunes a Viernes", "8:00", "14:00"])
-    for col, ancho in zip("ABCDEF", (32, 30, 18, 18, 10, 10)):
-        ejemplo.column_dimensions[col].width = ancho
     wb.save(ruta)

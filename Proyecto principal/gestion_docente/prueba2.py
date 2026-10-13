@@ -12,6 +12,53 @@ from utilerias.paleta_colores import colores, fuentes
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
+
+class FormularioHorarioWidget(ctk.CTkFrame):
+    """Componente aislado para la gestión visual del formulario de turnos (Principio SRP)."""
+    def __init__(self, parent, dias_mapping, on_guardar):
+        super().__init__(parent, corner_radius=12, fg_color=colores.BG_PANEL_ALT, border_width=1, border_color=colores.BORDE_SUAVE)
+        self.dias_mapping = dias_mapping
+        self.on_guardar = on_guardar
+        self.id_horario_editando = None
+
+        self._construir_interfaz()
+
+    def _construir_interfaz(self):
+        self.cmb_dia = ctk.CTkOptionMenu(
+            self, values=list(self.dias_mapping.keys()), width=110, height=34,
+            font=fuentes.cuerpo(size=12), fg_color=colores.BG_ENTRADA,
+            button_color=colores.ACENTO, button_hover_color=colores.ACENTO_HOVER,
+        )
+        self.cmb_dia.pack(side="left", padx=(12, 6), pady=8)
+
+        self.ent_entrada = ctk.CTkEntry(
+            self, width=80, height=34, placeholder_text="07:00",
+            font=fuentes.cuerpo(size=13), fg_color=colores.BG_ENTRADA, border_color=colores.BORDE,
+        )
+        self.ent_entrada.pack(side="left", padx=4, pady=8)
+        aplicar_formato_hora(self.ent_entrada)
+
+        self.ent_salida = ctk.CTkEntry(
+            self, width=80, height=34, placeholder_text="12:00",
+            font=fuentes.cuerpo(size=13), fg_color=colores.BG_ENTRADA, border_color=colores.BORDE,
+        )
+        self.ent_salida.pack(side="left", padx=4, pady=8)
+        aplicar_formato_hora(self.ent_salida)
+
+        self.btn_accion_horario = ctk.CTkButton(
+            self, text="+ Agregar", command=self.on_guardar,
+            height=34, corner_radius=9, font=fuentes.boton(size=12),
+            fg_color=colores.EXITO, hover_color=colores.EXITO_HOVER, width=90
+        )
+        self.btn_accion_horario.pack(side="left", padx=6, pady=8)
+
+        self.btn_cancelar_edicion = ctk.CTkButton(
+            self, text="✕", width=34, height=34, corner_radius=9, font=fuentes.boton(size=12),
+            fg_color=colores.NEUTRO, hover_color=colores.NEUTRO_HOVER
+        )
+        # El botón cancelar se empaqueta de forma encapsulada únicamente al editar
+
+
 class VentanaGestionDocentes(ctk.CTkToplevel):
     DIAS_MAPPING = {"Lunes": 1, "Martes": 2, "Miércoles": 3, "Jueves": 4, "Viernes": 5}
     ELEMENTOS_POR_PAGINA = 10
@@ -184,42 +231,21 @@ class VentanaGestionDocentes(ctk.CTkToplevel):
 
         ctk.CTkLabel(encabezado, text="Selecciona un docente de la lista para ver o editar su horario", font=fuentes.pequena(size=11), text_color=colores.TEXTO_SECUNDARIO).pack(anchor="w", pady=(2, 0))
 
-        horario_form = ctk.CTkFrame(panel, corner_radius=12, fg_color=colores.BG_PANEL_ALT, border_width=1, border_color=colores.BORDE_SUAVE)
-        horario_form.grid(row=1, column=0, sticky="ew", padx=15, pady=(4, 12))
-
-        self.cmb_dia = ctk.CTkOptionMenu(
-            horario_form, values=list(self.DIAS_MAPPING.keys()), width=110, height=34,
-            font=fuentes.cuerpo(size=12), fg_color=colores.BG_ENTRADA,
-            button_color=colores.ACENTO, button_hover_color=colores.ACENTO_HOVER,
+        # Integración limpia del componente FormularioHorarioWidget
+        self.form_horario = FormularioHorarioWidget(
+            panel, 
+            dias_mapping=self.DIAS_MAPPING, 
+            on_guardar=self.guardar_o_actualizar_horario
         )
-        self.cmb_dia.pack(side="left", padx=(12, 6), pady=8)
+        self.form_horario.grid(row=1, column=0, sticky="ew", padx=15, pady=(4, 12))
 
-        self.ent_entrada = ctk.CTkEntry(
-            horario_form, width=80, height=34, placeholder_text="07:00",
-            font=fuentes.cuerpo(size=13), fg_color=colores.BG_ENTRADA, border_color=colores.BORDE,
-        )
-        self.ent_entrada.pack(side="left", padx=4, pady=8)
-        aplicar_formato_hora(self.ent_entrada)
-
-        self.ent_salida = ctk.CTkEntry(
-            horario_form, width=80, height=34, placeholder_text="12:00",
-            font=fuentes.cuerpo(size=13), fg_color=colores.BG_ENTRADA, border_color=colores.BORDE,
-        )
-        self.ent_salida.pack(side="left", padx=4, pady=8)
-        aplicar_formato_hora(self.ent_salida)
-
-        self.btn_accion_horario = ctk.CTkButton(
-            horario_form, text="+ Agregar", command=self.guardar_o_actualizar_horario,
-            height=34, corner_radius=9, font=fuentes.boton(size=12),
-            fg_color=colores.EXITO, hover_color=colores.EXITO_HOVER, width=90
-        )
-        self.btn_accion_horario.pack(side="left", padx=6, pady=8)
-
-        self.btn_cancelar_edicion = ctk.CTkButton(
-            horario_form, text="✕", width=34, height=34, corner_radius=9, font=fuentes.boton(size=12),
-            fg_color=colores.NEUTRO, hover_color=colores.NEUTRO_HOVER, command=self.cancelar_edicion_horario
-        )
-        # Se empaquetará únicamente al activar la edición de un turno individual
+        # Enlace directo de nombres para conservar compatibilidad absoluta
+        self.cmb_dia = self.form_horario.cmb_dia
+        self.ent_entrada = self.form_horario.ent_entrada
+        self.ent_salida = self.form_horario.ent_salida
+        self.btn_accion_horario = self.form_horario.btn_accion_horario
+        self.btn_cancelar_edicion = self.form_horario.btn_cancelar_edicion
+        self.btn_cancelar_edicion.configure(command=self.cancelar_edicion_horario)
 
         self.scroll_horarios = ctk.CTkScrollableFrame(panel, fg_color="transparent")
         self.scroll_horarios.grid(row=3, column=0, sticky="nsew", padx=10, pady=(0, 15))
@@ -367,6 +393,7 @@ class VentanaGestionDocentes(ctk.CTkToplevel):
     def iniciar_edicion_horario(self, turno):
         """Carga el turno seleccionado en el formulario superior para editarlo individualmente."""
         self.id_horario_editando = turno['id_horario']
+        self.form_horario.id_horario_editando = self.id_horario_editando
         self.cmb_dia.set(turno['nombre_dia'])
         self.ent_entrada.delete(0, 'end')
         self.ent_entrada.insert(0, turno['hora_entrada'])
@@ -379,6 +406,7 @@ class VentanaGestionDocentes(ctk.CTkToplevel):
     def cancelar_edicion_horario(self):
         """Vuelve el formulario al estado por defecto (crear nuevo turno)."""
         self.id_horario_editando = None
+        self.form_horario.id_horario_editando = None
         self.ent_entrada.delete(0, 'end')
         self.ent_salida.delete(0, 'end')
         self.btn_accion_horario.configure(text="+ Agregar", fg_color=colores.EXITO, hover_color=colores.EXITO_HOVER)
@@ -444,6 +472,8 @@ class VentanaGestionDocentes(ctk.CTkToplevel):
         )
         self.chk_todos.grid(row=0, column=0, sticky="w")
 
+        # Nota: Este botón de "Limpiar selección" sirve para desmarcar las casillas de los profesores,
+        # por lo que SE QUEDA. El que eliminamos es el de limpiar los horarios/agenda.
         self.btn_limpiar_sel = ctk.CTkButton(
             fila, text="", height=22, corner_radius=6, font=fuentes.boton(size=11), fg_color="transparent",
             hover_color=colores.NEUTRO, text_color=colores.ACENTO, command=self.limpiar_seleccion,
@@ -452,11 +482,15 @@ class VentanaGestionDocentes(ctk.CTkToplevel):
 
         self.barra_acciones = ctk.CTkFrame(panel, corner_radius=10, fg_color=colores.BG_PANEL_ALT, border_width=1, border_color=colores.BORDE_CLARO)
         self.barra_acciones.grid(row=4, column=0, sticky="ew", padx=15, pady=(0, 6))
-        acciones = (("✏ Área/Tipo", "datos", colores.ACENTO, colores.ACENTO_HOVER),
-                    ("＋ Turno", "asignar", colores.EXITO, colores.EXITO_HOVER),
-                    ("－ Turno", "quitar", colores.ADVERTENCIA, colores.ADVERTENCIA_HOVER),
-                    ("🧹 Limpiar", "limpiar", colores.NEUTRO, colores.NEUTRO_HOVER),
-                    ("🗑 Eliminar", "eliminar", colores.PELIGRO, colores.PELIGRO_HOVER))
+        
+        # Acciones limpias y sin redundancias (Se eliminó "limpiar")
+        acciones = (
+            ("✏ Área/Tipo", "datos", colores.ACENTO, colores.ACENTO_HOVER),
+            ("＋ Turno", "asignar", colores.EXITO, colores.EXITO_HOVER),
+            ("－ Turno", "quitar", colores.ADVERTENCIA, colores.ADVERTENCIA_HOVER),
+            ("🗑 Eliminar", "eliminar", colores.PELIGRO, colores.PELIGRO_HOVER)
+        )
+        
         for col, (texto, accion, color, hover) in enumerate(acciones):
             self.barra_acciones.grid_columnconfigure(col, weight=1, uniform="acciones")
             ctk.CTkButton(
@@ -525,6 +559,7 @@ class VentanaGestionDocentes(ctk.CTkToplevel):
 
     def cargar_archivo_masivo(self):
         VentanaImportar(self, on_success_callback=self.cargar_lista_profesores)
+
 
 if __name__ == "__main__":
     app = VentanaGestionDocentes()
