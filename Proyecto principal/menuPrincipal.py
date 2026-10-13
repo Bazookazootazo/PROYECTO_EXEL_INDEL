@@ -12,25 +12,18 @@ ctk.set_default_color_theme("blue")
 app = ctk.CTk()
 app.title("Menú de Inicio - Control de Acceso")
 app.configure(fg_color=colores.BG_VENTANA)
-
-# --- CONFIGURACIÓN Y CENTRADO CORREGIDO ---
 ANCHO, ALTO = 900, 680
 
 def centrar_ventana(ventana, ancho, alto):
     ventana.update_idletasks()
     
-    # Obtener el factor de escalado DPI que customtkinter está aplicando
     scaling = ventana._get_window_scaling()
-    
-    # Ancho y alto reales escalados
     ancho_escalado = int(ancho * scaling)
     alto_escalado = int(alto * scaling)
     
-    # Ancho y alto de la pantalla completa
     sw = ventana.winfo_screenwidth()
     sh = ventana.winfo_screenheight()
     
-    # Calcular coordenadas centradas reales
     pos_x = max(0, int((sw - ancho_escalado) / 2))
     pos_y = max(0, int((sh - alto_escalado) / 2))
     
@@ -39,13 +32,11 @@ def centrar_ventana(ventana, ancho, alto):
 centrar_ventana(app, ANCHO, ALTO)
 app.resizable(True, True)
 
-# Referencias para las ventanas secundarias
 ventana_docentes = None
 ventana_subir = None
 ventana_generar = None
 ventana_checadas = None
 
-# --- FUNCIONES DE NAVEGACIÓN ---
 def volver_al_menu(ventana_secundaria):
     if ventana_secundaria and ventana_secundaria.winfo_exists():
         ventana_secundaria.destroy()
@@ -101,8 +92,6 @@ def abrir_registro_checadas():
 def salir():
     app.destroy()
 
-# --- DISEÑO DEL MENÚ PRINCIPAL ---
-
 main_card = ctk.CTkFrame(
     master=app,
     corner_radius=22,
@@ -112,13 +101,11 @@ main_card = ctk.CTkFrame(
 )
 main_card.pack(fill="both", expand=True, padx=15, pady=15)
 
-# Franja de acento superior
 franja_acento = ctk.CTkFrame(
     master=main_card, corner_radius=0, fg_color=colores.ACENTO, height=4
 )
 franja_acento.pack(fill="x", side="top")
 
-# Encabezado
 header_frame = ctk.CTkFrame(master=main_card, fg_color="transparent")
 header_frame.pack(fill="x", pady=(15, 10), padx=20)
 
@@ -146,12 +133,10 @@ lbl_subtitulo = ctk.CTkLabel(
 )
 lbl_subtitulo.pack(pady=(2, 0))
 
-# Contenedor de Tarjetas de Opciones (Permitir Scroll si falta espacio vertical)
 cards_container = ctk.CTkScrollableFrame(master=main_card, fg_color="transparent")
 cards_container.pack(fill="both", expand=True, padx=15, pady=5)
 cards_container.grid_columnconfigure((0, 1), weight=1, uniform="col")
 
-# Tarjeta 1: Procesar Archivos
 card_subir = ctk.CTkFrame(
     master=cards_container,
     corner_radius=16,
@@ -203,7 +188,6 @@ btn_subir = ctk.CTkButton(
 )
 btn_subir.pack(fill="x", padx=15, pady=(0, 15))
 
-# Tarjeta 2: Gestión de Docentes
 card_docentes = ctk.CTkFrame(
     master=cards_container,
     corner_radius=16,
@@ -255,7 +239,6 @@ btn_docentes = ctk.CTkButton(
 )
 btn_docentes.pack(fill="x", padx=15, pady=(0, 15))
 
-# Tarjeta 3: Generación de Reportes
 card_generador = ctk.CTkFrame(
     master=cards_container,
     corner_radius=16,
@@ -307,7 +290,6 @@ btn_generador = ctk.CTkButton(
 )
 btn_generador.pack(fill="x", padx=15, pady=(0, 15))
 
-# Tarjeta 4: Registro de Checadas
 card_checadas = ctk.CTkFrame(
     master=cards_container,
     corner_radius=16,
@@ -359,11 +341,9 @@ btn_checadas = ctk.CTkButton(
 )
 btn_checadas.pack(fill="x", padx=15, pady=(0, 15))
 
-# Separador
 separador = ctk.CTkFrame(master=main_card, fg_color=colores.BORDE_SUAVE, height=1)
 separador.pack(fill="x", padx=20, pady=(2, 0))
 
-# Pie de página
 footer_frame = ctk.CTkFrame(master=main_card, fg_color="transparent")
 footer_frame.pack(fill="x", padx=20, pady=(8, 12))
 
@@ -388,5 +368,4 @@ btn_salir = ctk.CTkButton(
     command=salir,
 )
 btn_salir.pack(side="right")
-
 app.mainloop()

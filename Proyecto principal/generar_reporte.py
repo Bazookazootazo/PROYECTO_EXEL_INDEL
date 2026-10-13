@@ -116,7 +116,7 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
             conn = self.obtener_conexion_bd()
             cursor = conn.cursor(dictionary=True)
 
-            # 1. Obtener Docentes del Área (usando las columnas reales de tu tabla 'profesores')
+            # 1. Obtener Docentes del Área
             query_docentes = """
                 SELECT id_profesor, nombre 
                 FROM profesores 
@@ -130,7 +130,7 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
                 messagebox.showwarning("Sin Datos", f"No hay docentes registrados en el área: {area_seleccionada}", parent=self)
                 return
 
-            # Lista de días en la quincena
+            # Lista exacta de días en la quincena
             dias_quincena = []
             curr = fecha_inicio
             while curr <= fecha_fin:
@@ -151,8 +151,6 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
             f_normal = Font(name="Calibri", size=9)
             f_nota = Font(name="Calibri", size=9, bold=True)
 
-            # Colores en formato ARGB completo (FF = opaco) y texto oscuro sobre gris claro,
-            # para que el encabezado se vea igual en Excel, WPS, LibreOffice y visores previos.
             fill_header = PatternFill(start_color="FFD9D9D9", end_color="FFD9D9D9", fill_type="solid")
             f_header = Font(name="Calibri", size=9, bold=True, color="FF000000")
 
@@ -168,8 +166,8 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
 
             # --- ENCABEZADOS DE DOCUMENTO ---
             total_cols = len(dias_quincena) * 2
-            col_fin_letter = get_column_letter(1 + total_cols)          # última columna de días
-            col_total_letter = get_column_letter(2 + total_cols)        # columna TOTAL
+            col_fin_letter = get_column_letter(1 + total_cols)
+            col_total_letter = get_column_letter(2 + total_cols)
 
             ws.merge_cells(f"A1:{col_total_letter}1")
             ws["A1"] = "Control Quincenal de Asistencia Administrativo y Profesor de Tiempo Completo"
@@ -188,8 +186,6 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
             ws["A4"].alignment = align_center
 
             # --- TABLA DE DATOS (encabezado) ---
-            # Primero se da formato a TODAS las celdas del encabezado (filas 6 a 8) y después
-            # se combinan. Así el fondo negro/texto blanco se ve en cualquier visor de Excel.
             for r in range(6, 9):
                 for c in range(1, 3 + total_cols):
                     celda = ws.cell(row=r, column=c)
@@ -207,14 +203,14 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
             ws.merge_cells(f"{col_total_letter}6:{col_total_letter}8")
             ws[f"{col_total_letter}6"] = "TOTAL RETARDO"
 
-            # Renglón 7: día de la semana + fecha completa. Renglón 8: Entrada / Salida
+            # Renglón 7: Fecha corta (ej. 01/12). Renglón 8: Entrada / Salida
             curr_col = 2
             for d in dias_quincena:
                 c1_letra = get_column_letter(curr_col)
                 c2_letra = get_column_letter(curr_col + 1)
 
                 ws.merge_cells(f"{c1_letra}7:{c2_letra}7")
-                ws[f"{c1_letra}7"] = d.strftime("%d/%m/%Y")
+                ws[f"{c1_letra}7"] = d.strftime("%d/%m")
                 ws[f"{c1_letra}8"] = "Entrada"
                 ws[f"{c2_letra}8"] = "Salida"
 
@@ -238,10 +234,7 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
                     st_date = datetime.combine(d, datetime.min.time())
                     end_date = datetime.combine(d, datetime.max.time())
 
-                    # A) Obtener el horario esperado del docente para este día específico
-                    # Python weekday(): Lunes=0, Martes=1, ..., Viernes=4, Sábado=5, Domingo=6
-                    # Tabla 'dias_semana': Lunes=1, Martes=2, ..., Viernes=5
-                    id_dia_bd = d.weekday() + 1
+                    id_dia_bd = d.weekday() + 1  # Lunes=1 ... Viernes=5
 
                     q_horario = """
                         SELECT hora_entrada, hora_salida 
@@ -251,9 +244,6 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
                     cursor.execute(q_horario, (id_prof, id_dia_bd))
                     horario_doc = cursor.fetchone()
 
-                    h_entrada_esp = horario_doc['hora_entrada'] if horario_doc else None
-
-                    # B) Obtener las checadas guardadas en este día
                     q_checadas = """
                         SELECT fecha_hora FROM checadas 
                         WHERE id_profesor = %s AND fecha_hora BETWEEN %s AND %s 
@@ -268,35 +258,49 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
                     if d.weekday() >= 5:  # Sábado / Domingo
                         val_entrada = "Descanso"
                         val_salida = "Descanso"
-                    elif not horario_doc:  # El docente no tiene horario asignado ese día
+                    elif not horario_doc:  # Sin horario asignado ese día
                         val_entrada = "N/A"
                         val_salida = "N/A"
-                    elif not checadas:  # Tenía horario pero no registró ninguna checada
+                    elif not checadas:  # Tenía horario pero no registró checada alguna -> Falta Injustificada
                         val_entrada = "FI"
                         val_salida = "FI"
                     else:
-                        primera_ch = checadas[0]
-                        ultima_ch = checadas[-1] if len(checadas) > 1 else None
+                        h_entrada_esp = horario_doc['hora_entrada']
+                        h_salida_esp = horario_doc['hora_salida']
 
-                        if h_entrada_esp:
-                            dt_entrada_esp = datetime.combine(d, (datetime.min + h_entrada_esp).time() if isinstance(h_entrada_esp, timedelta) else h_entrada_esp)
-                            # Se ignoran los segundos: 08:10:59 sigue siendo 08:10
+                        dt_entrada_esp = datetime.combine(d, (datetime.min + h_entrada_esp).time() if isinstance(h_entrada_esp, timedelta) else h_entrada_esp)
+                        dt_salida_esp = datetime.combine(d, (datetime.min + h_salida_esp).time() if isinstance(h_salida_esp, timedelta) else h_salida_esp)
+                        midpoint = dt_entrada_esp + (dt_salida_esp - dt_entrada_esp) / 2
+
+                        # Resolver si la ponchada única es Entrada o Salida
+                        if len(checadas) == 1:
+                            p = checadas[0]
+                            if p <= midpoint:
+                                primera_ch = p
+                                ultima_ch = None
+                            else:
+                                primera_ch = None
+                                ultima_ch = p
+                        else:
+                            primera_ch = checadas[0]
+                            ultima_ch = checadas[-1]
+
+                        # Procesar Entrada
+                        if primera_ch:
                             primera_min = primera_ch.replace(second=0, microsecond=0)
                             limite_tolerancia = dt_entrada_esp + timedelta(minutes=TOLERANCIA_MIN)
 
                             if primera_min <= limite_tolerancia:
-                                # Llegó a tiempo o dentro de los 10 min de tolerancia
                                 val_entrada = primera_ch.strftime("%H:%M")
                             else:
-                                # Retardo = minutos transcurridos DESPUÉS de la tolerancia
-                                # (entrada 8:24 con horario 8:00 -> 24 - 10 = 14 min)
                                 retardo_min = int((primera_min - limite_tolerancia).total_seconds() // 60)
                                 val_entrada = f"{primera_ch.strftime('%H:%M')} R ({retardo_min}m)"
                                 total_retardo_min += retardo_min
                         else:
-                            val_entrada = primera_ch.strftime("%H:%M")
+                            val_entrada = "FIE"
 
-                        if ultima_ch and ultima_ch != primera_ch:
+                        # Procesar Salida
+                        if ultima_ch:
                             val_salida = ultima_ch.strftime("%H:%M")
                         else:
                             val_salida = "FIS"
@@ -335,7 +339,7 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
 
             fila_actual += 1
             ws.merge_cells(f"A{fila_actual}:{col_fin_letter}{fila_actual}")
-            ws[f"A{fila_actual}"] = "Después de los 10 minutos de TOLERANCIA se comenzarān a contar los minutos de Retardo del Personal de UTN. Por ejemplo: Si su entrada fue registrada a las 8:24, se registrarán 14 minutos de retardo."
+            ws[f"A{fila_actual}"] = "Después de los 10 minutos de TOLERANCIA se comenzarán a contar los minutos de Retardo del Personal de UTN. Por ejemplo: Si su entrada fue registrada a las 8:24, se registrarán 14 minutos de retardo."
             ws[f"A{fila_actual}"].font = f_normal
             ws[f"A{fila_actual}"].alignment = align_center
 
@@ -488,11 +492,11 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
             hover_color=colores.NEUTRO_HOVER,
             font=fuentes.boton(size=14),
             corner_radius=10,
-            width=220,  # El ancho se especifica al crear el botón
+            width=220,
             height=46,
             command=self.regresar_al_menu
         )
-        btn_volver.pack(side="right") # Se eliminó el 'width=220' del pack()
+        btn_volver.pack(side="right")
 
         # Barra de Estado
         status_bar = ctk.CTkFrame(master=main_card, fg_color=colores.BG_ENTRADA, corner_radius=10, height=40, border_width=1, border_color=colores.BORDE_SUAVE)
