@@ -8,7 +8,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 import pandas as pd
 import mysql.connector
-
+from generar_reporte import VentanaGenerarReporte
 ANCHO, ALTO = 1100, 720
 
 def centrar_ventana(ventana, ancho, alto):
@@ -19,6 +19,16 @@ def centrar_ventana(ventana, ancho, alto):
 
 from utilerias.paleta_colores import colores, fuentes
 
+ventana_generar = None
+    
+def volver_al_menu(ventana_secundaria):
+      if ventana_secundaria and ventana_secundaria.winfo_exists():
+        ventana_secundaria.destroy()
+    
+      ventana.deiconify()
+      ventana.wm_state('normal')
+      centrar_ventana(ventana, ANCHO, ALTO)
+
 class VentanaSubirArchivos(ctk.CTkToplevel):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -27,24 +37,24 @@ class VentanaSubirArchivos(ctk.CTkToplevel):
         self.title("Procesar Documentos - Control de Acceso")
         self.configure(fg_color=colores.BG_VENTANA)
 
-        centrar_ventana(self, ANCHO, ALTO)
-        self.resizable(False, False)
+        self.state('zoomed') 
+        self.resizable(True, True)
+
         self.focus()
         self.lift()
         self.ruta_archivo = []
         self._crear_interfaz()
 
-    # --- CONEXIÓN A BASE DE DATOS ---
     @staticmethod
     def obtener_conexion_bd():
         return mysql.connector.connect(
             host="localhost",
-            user="root",        # Cambia por tu usuario de MySQL
-            password="",        # Cambia por tu contraseña de MySQL
-            database="control_asistencia" # Tu base de datos
+            user="root",        
+            password="",        
+            database="control_asistencia" 
         )
 
-    # --- FUNCIONES DE LÓGICA DE NEGOCIO ---
+
 
     @staticmethod
     def _detectar_encoding_por_bom(ruta):
@@ -222,7 +232,6 @@ class VentanaSubirArchivos(ctk.CTkToplevel):
 
         return pd.to_datetime(val_str, dayfirst=dia_primero, errors='coerce')
 
-    # --- MÉTODOS DE CONTROL DE INTERFAZ Y BASE DE DATOS ---
 
     def procesar_archivo(self):
         if not self.ruta_archivo:
@@ -275,7 +284,6 @@ class VentanaSubirArchivos(ctk.CTkToplevel):
             messagebox.showerror("Error de Procesamiento", f"Ocurrió un problema al procesar los archivos:\n{e}", parent=self)
             return
 
-        # --- GUARDAR DIRECTAMENTE EN BASE DE DATOS ---
         try:
             self.actualizar_estado("Guardando registros en la base de datos...", colores.ESTADO_PROCESANDO)
             self.update()
@@ -283,7 +291,6 @@ class VentanaSubirArchivos(ctk.CTkToplevel):
             conn = self.obtener_conexion_bd()
             cursor = conn.cursor()
 
-            # 1. Obtener catálogo de profesores para mapear nombre -> id_profesor
             cursor.execute("SELECT id_profesor, nombre FROM profesores")
             profesores = cursor.fetchall()
             dict_profesores = {nombre.strip().lower(): id_prof for id_prof, nombre in profesores}
@@ -291,7 +298,6 @@ class VentanaSubirArchivos(ctk.CTkToplevel):
             registros_insertados = 0
             profesores_no_encontrados = set()
 
-            # 2. Insertar cada checada procesada
             sql_insert = "INSERT IGNORE INTO checadas (id_profesor, fecha_hora) VALUES (%s, %s)"
 
             registros_a_insertar = []
@@ -315,7 +321,6 @@ class VentanaSubirArchivos(ctk.CTkToplevel):
 
             self.actualizar_estado("¡Procesamiento completado con éxito!", colores.ESTADO_EXITO)
             
-            # Mensaje de confirmación solicitado
             mensaje = f"las checacas fueron procesadas correctamente.\n\n" \
                       f"• Registros guardados/actualizados: {registros_insertados}"
             
@@ -380,7 +385,19 @@ class VentanaSubirArchivos(ctk.CTkToplevel):
             self.parent.deiconify()
         self.destroy()
 
-    # --- DISEÑO DE LA INTERFAZ ---
+    def ir_generar_reporte(self):
+        global ventana_generar
+        if ventana_generar is None or not ventana_generar.winfo_exists():
+                self.withdraw()
+                ventana_generar = VentanaGenerarReporte(self)
+                ventana_generar.protocol(
+                "WM_DELETE_WINDOW", lambda: volver_al_menu(ventana_generar)
+                )
+        else:
+                ventana_generar.focus()
+
+
+    # interfaz
 
     def _crear_interfaz(self):
         main_card = ctk.CTkFrame(
@@ -540,7 +557,7 @@ class VentanaSubirArchivos(ctk.CTkToplevel):
             fg_color="#EEA942",
             hover_color="#AA7526",
             text_color=colores.TEXTO_SOBRE_ACENTO,
-            command=self.regresar_al_menu
+            command=self.ir_generar_reporte
         )
         btn_generar_reporte.pack(side="right", padx=(0, 10))
 
