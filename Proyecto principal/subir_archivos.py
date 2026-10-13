@@ -18,7 +18,6 @@ def centrar_ventana(ventana, ancho, alto):
     ventana.geometry(f"{ancho}x{alto}+{pos_x}+{pos_y}")
 
 from utilerias.paleta_colores import colores, fuentes
-
 ventana_generar = None
     
 def volver_al_menu(ventana_secundaria):
@@ -260,8 +259,7 @@ class VentanaSubirArchivos(ctk.CTkToplevel):
 
             if df_final.empty:
                 raise ValueError("No se pudieron extraer datos válidos. Revisa la estructura del archivo cargado.")
-
-            # Filtrar registros continuos a menos de 15 minutos por profesor
+            
             dfs_filtrados = []
             for nombre, grupo in df_final.groupby('nombre'):
                 filas_validas = []
@@ -285,7 +283,7 @@ class VentanaSubirArchivos(ctk.CTkToplevel):
             return
 
         try:
-            self.actualizar_estado("Guardando registros en la base de datos...", colores.ESTADO_PROCESANDO)
+            self.actualizar_estado("Guardando registros...", colores.ESTADO_PROCESANDO)
             self.update()
 
             conn = self.obtener_conexion_bd()
@@ -321,11 +319,9 @@ class VentanaSubirArchivos(ctk.CTkToplevel):
 
             self.actualizar_estado("¡Procesamiento completado con éxito!", colores.ESTADO_EXITO)
             
-            mensaje = f"las checacas fueron procesadas correctamente.\n\n" \
-                      f"• Registros guardados/actualizados: {registros_insertados}"
-            
+            mensaje = f"las checacas fueron procesadas correctamente." 
             if profesores_no_encontrados:
-                mensaje += f"\n\nNota: Hubo {len(profesores_no_encontrados)} docente(s) en el archivo que no están registrados en la BD."
+                mensaje += f"\n\nNota: Hubo {len(profesores_no_encontrados)} docente(s) en el archivo que no están registrados en el sistema."
 
             messagebox.showinfo("Éxito", mensaje, parent=self)
             self.limpiar_lista()
@@ -560,10 +556,6 @@ class VentanaSubirArchivos(ctk.CTkToplevel):
             command=self.ir_generar_reporte
         )
         btn_generar_reporte.pack(side="right", padx=(0, 10))
-
-    
-
-
 
 if __name__ == "__main__":
     ctk.set_appearance_mode("dark")
