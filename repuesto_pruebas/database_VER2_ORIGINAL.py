@@ -105,7 +105,7 @@ def obtener_horarios_profesor(id_profesor):
         conexion = obtener_conexion()
         cursor = conexion.cursor(dictionary=True)
         query = """
-            SELECT 
+            SELECT
                 h.id_horario,
                 d.nombre_dia,
                 h.id_dia,
@@ -130,6 +130,73 @@ def eliminar_horario(id_horario):
         cursor = conexion.cursor()
         cursor.execute("DELETE FROM horarios_docentes WHERE id_horario = %s", (id_horario,))
         conexion.commit()
+    finally:
+        if cursor: cursor.close()
+        if conexion and conexion.is_connected(): conexion.close()
+
+# --- FUNCIONES PARA IMPORTACIÓN MASIVA (usadas por importador.py) ---
+def obtener_todos_los_horarios():
+    """Todos los horarios de todos los docentes en una sola consulta (para importación masiva)."""
+    conexion = None
+    cursor = None
+    try:
+        conexion = obtener_conexion()
+        cursor = conexion.cursor(dictionary=True)
+        cursor.execute(
+            """SELECT id_horario, id_profesor, id_dia,
+                      TIME_FORMAT(hora_entrada, '%H:%i') AS hora_entrada,
+                      TIME_FORMAT(hora_salida, '%H:%i') AS hora_salida
+               FROM horarios_docentes"""
+        )
+        return cursor.fetchall()
+    finally:
+        if cursor: cursor.close()
+        if conexion and conexion.is_connected(): conexion.close()
+
+def aplicar_importacion(docentes):
+    """
+    Aplica en una sola transacción lo que el usuario ya revisó y confirmó en
+    la importación masiva. `docentes` es una lista de dicts:
+        id: int o None (None = crear)
+        nombre, area, tipo: str
+        actualizar: bool (True = ya existía y cambió Área/Tipo)
+        turnos: [(id_dia, hora_entrada, hora_salida), ...]  a insertar
+        quitar: [id_horario, ...]  a eliminar (modo "reemplazar")
+    No decide nada por su cuenta: todo lo dudoso ya se resolvió antes de llegar aquí.
+    """
+    conexion = None
+    cursor = None
+    try:
+        conexion = obtener_conexion()
+        cursor = conexion.cursor()
+        conexion.start_transaction()
+
+        for d in docentes:
+            if d["id"] is None:
+                cursor.execute(
+                    "INSERT INTO profesores (nombre, area, tipo) VALUES (%s, %s, %s)",
+                    (d["nombre"], d["area"], d["tipo"])
+                )
+                d["id"] = cursor.lastrowid
+            elif d["actualizar"]:
+                cursor.execute(
+                    "UPDATE profesores SET area = %s, tipo = %s WHERE id_profesor = %s",
+                    (d["area"], d["tipo"], d["id"])
+                )
+
+            for id_horario in d.get("quitar", []):
+                cursor.execute("DELETE FROM horarios_docentes WHERE id_horario = %s", (id_horario,))
+
+            for id_dia, hora_entrada, hora_salida in d.get("turnos", []):
+                cursor.execute(
+                    "INSERT INTO horarios_docentes (id_profesor, id_dia, hora_entrada, hora_salida) VALUES (%s, %s, %s, %s)",
+                    (d["id"], id_dia, hora_entrada, hora_salida)
+                )
+
+        conexion.commit()
+    except Exception:
+        if conexion and conexion.is_connected(): conexion.rollback()
+        raise
     finally:
         if cursor: cursor.close()
         if conexion and conexion.is_connected(): conexion.close()

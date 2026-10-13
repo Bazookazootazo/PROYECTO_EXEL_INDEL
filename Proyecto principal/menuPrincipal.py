@@ -1,17 +1,6 @@
 import ctypes
 import customtkinter as ctk
-
-# 1. CONFIGURACIÓN DPI CORRECTA EN WINDOWS (Debe ir antes o al inicio)
-try:
-    # 2 = Per-Monitor DPI Aware (previene el desfase de posicionamiento)
-    ctypes.windll.shcore.SetProcessDpiAwareness(2)
-except Exception:
-    try:
-        ctypes.windll.user32.SetProcessDpiAware()
-    except Exception:
-        pass
-
-from gestion_docentes import VentanaGestionDocentes
+from gestion_docente.prueba2 import VentanaGestionDocentes
 from subir_archivos import VentanaSubirArchivos
 from utilerias.paleta_colores import colores, fuentes
 from generar_reporte import VentanaGenerarReporte

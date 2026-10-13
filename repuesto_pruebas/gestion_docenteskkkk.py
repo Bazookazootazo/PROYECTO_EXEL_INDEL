@@ -1,9 +1,10 @@
 import math
 import customtkinter as ctk
-import database as db
-from crud_docente import VentanaCrudProfesor
+from utilerias import database as db
+from gestion_docente.crud_docente import VentanaCrudProfesor
 from utilerias.messagebox_variados import mostrar_exito, mostrar_advertencia, mostrar_error, mostrar_pregunta
 from utilerias.paleta_colores import colores, fuentes
+from tkinter import filedialog
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -45,11 +46,29 @@ class VentanaGestionDocentes(ctk.CTkToplevel):
         ctk.CTkLabel(encabezado, text="👥  Gestión Docente", font=fuentes.seccion(size=17), text_color=colores.TEXTO_PRIMARIO).pack(anchor="w")
         ctk.CTkLabel(encabezado, text="Catálogo de profesores y horarios", font=fuentes.pequena(size=11), text_color=colores.TEXTO_SECUNDARIO).pack(anchor="w", pady=(2, 0))
 
+        # Contenedor de botones superior
+        btn_frame_acciones = ctk.CTkFrame(panel, fg_color="transparent")
+        btn_frame_acciones.grid(row=1, column=0, sticky="ew", padx=15, pady=(0, 10))
+        btn_frame_acciones.grid_columnconfigure(0, weight=1)
+        btn_frame_acciones.grid_columnconfigure(1, weight=1)
+
         ctk.CTkButton(
-            panel, text="+  Nuevo Docente", command=self.abrir_ventana_registro,
+            btn_frame_acciones, text="+ Nuevo Docente", command=self.abrir_ventana_registro,
             font=fuentes.boton(size=13), height=38, corner_radius=10,
             fg_color=colores.ACENTO, hover_color=colores.ACENTO_HOVER,
-        ).grid(row=1, column=0, sticky="ew", padx=15, pady=(0, 10))
+        ).grid(row=0, column=0, sticky="ew", padx=(0, 5))
+
+        # Menú desplegable para carga masiva
+        self.btn_masivo = ctk.CTkOptionMenu(
+            btn_frame_acciones,
+            values=["Docente", "Horario", "Ambos"],
+            command=self.cargar_archivo_masivo,
+            font=fuentes.boton(size=13), height=38, corner_radius=10,
+            fg_color=colores.ACENTO, button_color=colores.ACENTO,
+            button_hover_color=colores.ACENTO_HOVER, dropdown_font=fuentes.cuerpo(size=12)
+        )
+        self.btn_masivo.set("📁 Carga Masiva")
+        self.btn_masivo.grid(row=0, column=1, sticky="ew", padx=(5, 0))
 
         self.var_busqueda = ctk.StringVar()
         self.var_busqueda.trace_add("write", self.filtrar_profesores)
@@ -375,6 +394,31 @@ class VentanaGestionDocentes(ctk.CTkToplevel):
                 entry_widget.configure(validate="key")
 
         entry_widget.bind("<KeyRelease>", _on_key_release)
+
+
+def cargar_archivo_masivo(self, seleccion):
+        # Reiniciar el texto del botón visualmente para que no se quede en "Docente"
+        self.btn_masivo.set("📁 Carga Masiva")
+        
+        tipos_archivo = [("Archivos de hoja de cálculo", "*.xlsx *.csv"), ("Todos los archivos", "*.*")]
+        ruta_archivo = filedialog.askopenfilename(
+            title=f"Seleccionar archivo para carga de {seleccion}", 
+            filetypes=tipos_archivo
+        )
+
+        if not ruta_archivo:
+            return
+
+        # Mandamos llamar la nueva función en base de datos indicando el tipo de carga
+        exito, mensaje = db.procesar_carga_masiva(ruta_archivo, seleccion)
+
+        if exito:
+            mostrar_exito("Carga Completada", mensaje, master=self)
+            self.cargar_lista_profesores()
+            if self.profesor_seleccionado:
+                self.cargar_horarios_profesor()
+        else:
+            mostrar_error("Error de formato", mensaje, master=self)
 
 if __name__ == "__main__":
     app = VentanaGestionDocentes()
