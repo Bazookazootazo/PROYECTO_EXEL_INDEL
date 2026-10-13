@@ -1,6 +1,5 @@
 import customtkinter as ctk
-
-from gestion_docentes import VentanaGestionDocentes
+from gestion_docente.prueba2 import VentanaGestionDocentes
 from subir_archivos import VentanaSubirArchivos
 from utilerias.paleta_colores import colores, fuentes
 
