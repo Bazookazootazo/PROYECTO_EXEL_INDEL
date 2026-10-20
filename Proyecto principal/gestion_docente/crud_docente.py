@@ -123,6 +123,7 @@ class VentanaCrudProfesor(ctk.CTkToplevel):
         area = self.cmb_area.get()
         tipo = self.cmb_tipo.get()
         turno = self.cmb_turno.get()
+        turno = self.cmb_turno.get().strip() or "Matutino"
 
         if not nombre:
             mostrar_advertencia("Atención", "Ingresa el nombre completo.", master=self)

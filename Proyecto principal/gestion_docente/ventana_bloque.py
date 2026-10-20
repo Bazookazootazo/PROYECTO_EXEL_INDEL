@@ -205,7 +205,7 @@ class VentanaBloque(ctk.CTkToplevel):
             setattr(self, atributo, entrada)
 
         self.var_traslape = ctk.BooleanVar(value=False)
-        ctk.CTkCheckBox(card, text="Permitir asignación con traslape de horas coincidentes", variable=self.var_traslape,
+        ctk.CTkCheckBox(card, text="¿Permitir asignar horario a docentes que ya cuenten con uno para los días seleccionados?", variable=self.var_traslape,
                         command=self.recalcular, checkbox_width=16, checkbox_height=16, fg_color=colores.ACENTO,
                         hover_color=colores.ACENTO_HOVER, border_color=colores.BORDE_CLARO,
                         font=fuentes.pequena(size=10), text_color=colores.TEXTO_SECUNDARIO).pack(anchor="w", padx=12, pady=(0, 10))
