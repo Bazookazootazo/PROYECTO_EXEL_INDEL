@@ -3,12 +3,16 @@ import re
 import csv
 import io
 import datetime
+import unicodedata
+import threading
+from difflib import SequenceMatcher
 import customtkinter as ctk
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import pandas as pd
 import mysql.connector
 from generar_reporte import VentanaGenerarReporte
+
 ANCHO, ALTO = 1100, 720
 
 def centrar_ventana(ventana, ancho, alto):
@@ -52,8 +56,6 @@ class VentanaSubirArchivos(ctk.CTkToplevel):
             password="",        
             database="control_asistencia" 
         )
-
-
 
     @staticmethod
     def _detectar_encoding_por_bom(ruta):
@@ -164,10 +166,7 @@ class VentanaSubirArchivos(ctk.CTkToplevel):
                 except Exception:
                     continue
 
-            raise ValueError(
-                "No se pudo determinar el delimitador ni la codificación del "
-                "archivo CSV. Verifica que el archivo tenga un formato de tabla válido."
-            )
+            raise ValueError("No se pudo determinar el delimitador ni la codificación del archivo CSV.")
 
         elif ext in ['.xlsx', '.xls']:
             return pd.read_excel(ruta)
@@ -217,7 +216,6 @@ class VentanaSubirArchivos(ctk.CTkToplevel):
             return pd.Timestamp(val)
 
         val_str = str(val).strip()
-
         match = re.search(r'(\d{1,2})[/\-](\d{1,2})[/\-](\d{2,4})\s*(\d{1,2}:\d{2}(?::\d{2})?)', val_str)
         if match:
             primero, segundo, anio, hora = match.groups()
@@ -231,17 +229,57 @@ class VentanaSubirArchivos(ctk.CTkToplevel):
 
         return pd.to_datetime(val_str, dayfirst=dia_primero, errors='coerce')
 
+    # --- FUNCIONES DE COINCIDENCIA DIFUSA OPTIMIZADAS ---
+    @staticmethod
+    def _normalizar_texto(texto):
+        if not texto:
+            return ""
+        texto = unicodedata.normalize('NFKD', str(texto)).encode('ASCII', 'ignore').decode('utf-8')
+        return " ".join(texto.lower().split())
+
+    def _calcular_similitud(self, norm_bd, norm_arch, palabras_bd):
+        if norm_bd == norm_arch:
+            return 1.0
+        palabras_arch = set(norm_arch.split())
+        if not palabras_bd or not palabras_arch:
+            return 0.0
+
+        interseccion = palabras_bd.intersection(palabras_arch)
+        union = palabras_bd.union(palabras_arch)
+        
+        jaccard = len(interseccion) / len(union)
+        seq_sim = SequenceMatcher(None, norm_bd, norm_arch).ratio()
+        return (jaccard * 0.7) + (seq_sim * 0.3)
+
+    def _encontrar_profesor_id(self, nombre_en_archivo, profesores_cache, umbral=0.45):
+        norm_arch = self._normalizar_texto(nombre_en_archivo)
+        mejor_id = None
+        mejor_score = 0.0
+
+        for prof_id, norm_bd, palabras_bd in profesores_cache:
+            score = self._calcular_similitud(norm_bd, norm_arch, palabras_bd)
+            if score > mejor_score:
+                mejor_score = score
+                mejor_id = prof_id
+
+        if mejor_score >= umbral:
+            return mejor_id
+        return None
+    # --------------------------------------------------
 
     def procesar_archivo(self):
         if not self.ruta_archivo:
             messagebox.showwarning("Advertencia", "No has seleccionado ningún archivo.", parent=self)
             return
 
-        lista_archivos = []
-        try:
-            self.actualizar_estado("Procesando archivos...", colores.ESTADO_PROCESANDO)
-            self.update()
+        # Ejecutar en segundo plano (Threading) para evitar congelar la interfaz con 45k+ registros
+        threading.Thread(target=self._ejecutar_proceso_pesado, daemon=True).start()
 
+    def _ejecutar_proceso_pesado(self):
+        try:
+            self.actualizar_estado("Procesando archivo masivo...", colores.ESTADO_PROCESANDO)
+            
+            lista_archivos = []
             for ruta in self.ruta_archivo:
                 df = self.cargar_dataframe(ruta)
                 df_limpio = self.extraer_columnas_relevantes(df)
@@ -253,13 +291,13 @@ class VentanaSubirArchivos(ctk.CTkToplevel):
                 df_final['nombre'] = df_final['nombre'].apply(lambda x: str(x).strip() if pd.notna(x) else x)
 
             dia_primero = self.detectar_orden_fecha(df_final['fecha'].tolist())
-
             df_final['fecha_dt'] = df_final['fecha'].apply(lambda v: self.procesar_fecha_robusta(v, dia_primero))
             df_final = df_final.dropna(subset=['fecha_dt']).sort_values(by='fecha_dt', ascending=True)
 
             if df_final.empty:
-                raise ValueError("No se pudieron extraer datos válidos. Revisa la estructura del archivo cargado.")
+                raise ValueError("No se pudieron extraer datos válidos. Revisa la estructura del archivo.")
             
+            # Optimización de intervalos de 15 min por docente
             dfs_filtrados = []
             for nombre, grupo in df_final.groupby('nombre'):
                 filas_validas = []
@@ -277,39 +315,43 @@ class VentanaSubirArchivos(ctk.CTkToplevel):
             else:
                 df_filtrado = pd.DataFrame(columns=df_final.columns)
 
-        except Exception as e:
-            self.actualizar_estado("Error durante el procesamiento", colores.ESTADO_ERROR)
-            messagebox.showerror("Error de Procesamiento", f"Ocurrió un problema al procesar los archivos:\n{e}", parent=self)
-            return
-
-        try:
-            self.actualizar_estado("Guardando registros...", colores.ESTADO_PROCESANDO)
-            self.update()
+            self.actualizar_estado("Asociando nombres y guardando en BD...", colores.ESTADO_PROCESANDO)
 
             conn = self.obtener_conexion_bd()
             cursor = conn.cursor()
 
             cursor.execute("SELECT id_profesor, nombre FROM profesores")
-            profesores = cursor.fetchall()
-            dict_profesores = {nombre.strip().lower(): id_prof for id_prof, nombre in profesores}
+            profesores_brutos = cursor.fetchall()
+            
+            # Precalcular caché de profesores para velocidad extrema
+            profesores_cache = [
+                (p_id, self._normalizar_texto(p_nom), set(self._normalizar_texto(p_nom).split()))
+                for p_id, p_nom in profesores_brutos
+            ]
 
-            registros_insertados = 0
-            profesores_no_encontrados = set()
-
-            sql_insert = "INSERT IGNORE INTO checadas (id_profesor, fecha_hora) VALUES (%s, %s)"
+            # Caché de nombres unicos del archivo para no recalcular similitud 45,000 veces
+            cache_nombres_archivo = {}
 
             registros_a_insertar = []
+            profesores_no_encontrados = set()
+
             for _, fila in df_filtrado.iterrows():
-                nombre_docente = str(fila['nombre']).strip().lower()
-                id_profesor = dict_profesores.get(nombre_docente)
+                nombre_archivo = str(fila['nombre']).strip()
+                
+                if nombre_archivo not in cache_nombres_archivo:
+                    cache_nombres_archivo[nombre_archivo] = self._encontrar_profesor_id(nombre_archivo, profesores_cache, umbral=0.45)
+
+                id_profesor = cache_nombres_archivo[nombre_archivo]
 
                 if id_profesor:
                     fecha_mysql = fila['fecha_dt'].strftime('%Y-%m-%d %H:%M:%S')
                     registros_a_insertar.append((id_profesor, fecha_mysql))
                 else:
-                    profesores_no_encontrados.add(fila['nombre'])
+                    profesores_no_encontrados.add(nombre_archivo)
 
+            registros_insertados = 0
             if registros_a_insertar:
+                sql_insert = "INSERT IGNORE INTO checadas (id_profesor, fecha_hora) VALUES (%s, %s)"
                 cursor.executemany(sql_insert, registros_a_insertar)
                 conn.commit()
                 registros_insertados = cursor.rowcount
@@ -317,21 +359,20 @@ class VentanaSubirArchivos(ctk.CTkToplevel):
             cursor.close()
             conn.close()
 
-            self.actualizar_estado("¡Procesamiento completado con éxito!", colores.ESTADO_EXITO)
+            self.actualizar_estado("¡Procesamiento masivo completado!", colores.ESTADO_EXITO)
             
-            mensaje = f"las checacas fueron procesadas correctamente." 
+            mensaje = f"Se procesaron y guardaron {registros_insertados} registros correctamente." 
             if profesores_no_encontrados:
-                mensaje += f"\n\nNota: Hubo {len(profesores_no_encontrados)} docente(s) en el archivo que no están registrados en el sistema."
+                mensaje += f"\n\nNota: Hubo {len(profesores_no_encontrados)} nombre(s) que no coincidieron con ningún docente:"
+                for p_no in list(profesores_no_encontrados)[:5]:
+                    mensaje += f"\n- {p_no}"
 
             messagebox.showinfo("Éxito", mensaje, parent=self)
             self.limpiar_lista()
 
-        except mysql.connector.Error as db_err:
-            self.actualizar_estado("Error de base de datos", colores.ESTADO_ERROR)
-            messagebox.showerror("Error de BD", f"No se pudo guardar en la base de datos:\n{db_err}", parent=self)
-        except Exception as e:
-            self.actualizar_estado("Error al guardar", colores.ESTADO_ERROR)
-            messagebox.showerror("Error al Guardar", f"Ocurrió un fallo inesperado al guardar:\n{e}", parent=self)
+        except Exception as err:
+            self.actualizar_estado("Error durante el procesamiento", colores.ESTADO_ERROR)
+            messagebox.showerror("Error", f"Ocurrió un error inesperado:\n{err}", parent=self)
 
     def subir_archivo(self):
         rutas_nuevas = filedialog.askopenfilenames(
@@ -392,9 +433,6 @@ class VentanaSubirArchivos(ctk.CTkToplevel):
         else:
                 ventana_generar.focus()
 
-
-    # interfaz
-
     def _crear_interfaz(self):
         main_card = ctk.CTkFrame(
             master=self, 
@@ -450,7 +488,7 @@ class VentanaSubirArchivos(ctk.CTkToplevel):
 
         btn_subir_archivo = ctk.CTkButton(
             master=actions_group,
-            text="Seleccionar Archivo(s)",
+            text="Seleccionar Archivo",
             fg_color=colores.ACENTO,
             hover_color=colores.ACENTO_HOVER,
             font=fuentes.boton(size=14),
@@ -525,22 +563,21 @@ class VentanaSubirArchivos(ctk.CTkToplevel):
         )
         self.lbl_estado_texto.pack(side="left")
 
-        #pie de pagina
-        footer_frame= ctk.CTkFrame(master=main_card, fg_color="transparent")
+        footer_frame = ctk.CTkFrame(master=main_card, fg_color="transparent")
         footer_frame.pack(fill="x", padx=25, pady=(0, 15))
 
         btn_volver_al_menu = ctk.CTkButton(
-                    master=footer_frame,
-                    text="Volver al menu principal",
-                    font=fuentes.boton(size=13),
-                    height=36,
-                    width=170,
-                    corner_radius=10,
-                    fg_color=colores.NEUTRO,
-                    hover_color=colores.NEUTRO_HOVER,
-                    text_color=colores.TEXTO_PRIMARIO,
-                    command=self.regresar_al_menu
-                )
+            master=footer_frame,
+            text="Volver al menu principal",
+            font=fuentes.boton(size=13),
+            height=36,
+            width=170,
+            corner_radius=10,
+            fg_color=colores.NEUTRO,
+            hover_color=colores.NEUTRO_HOVER,
+            text_color=colores.TEXTO_PRIMARIO,
+            command=self.regresar_al_menu
+        )
         btn_volver_al_menu.pack(side="right")
 
         btn_generar_reporte = ctk.CTkButton(

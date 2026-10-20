@@ -130,10 +130,14 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
                 messagebox.showwarning("Sin Datos", f"No hay docentes registrados en el área: {area_seleccionada}", parent=self)
                 return
 
+            # RESTRICCIÓN: Cambia a True si deseas quitar los fines de semana para que las columnas se vean más grandes y legibles al imprimir
+            OBLIGAR_SOLO_DIAS_HABILES = True 
+
             dias_quincena = []
             curr = fecha_inicio
             while curr <= fecha_fin:
-                dias_quincena.append(curr)
+                if not OBLIGAR_SOLO_DIAS_HABILES or curr.weekday() < 5:  # Lunes a Viernes
+                    dias_quincena.append(curr)
                 curr += timedelta(days=1)
 
             # Construir Libro Excel
@@ -142,24 +146,29 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
             ws.title = "Control Quincenal"
             ws.views.sheetView[0].showGridLines = True
 
-            # --- CONFIGURACIÓN DE PÁGINA PARA IMPRESIÓN PERFECTA ---
+            # --- CONFIGURACIÓN DE PÁGINA PARA IMPRESIÓN Y PDF PERFECTO ---
             ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
             ws.page_setup.paperSize = ws.PAPERSIZE_LETTER
             ws.page_setup.fitToWidth = 1
             ws.page_setup.fitToHeight = 0
             ws.sheet_properties.pageSetUpPr.fitToPage = True
+            
+            ws.page_margins.left = 0.3
+            ws.page_margins.right = 0.3
+            ws.page_margins.top = 0.4
+            ws.page_margins.bottom = 0.4
 
-            # --- ESTILOS INSTITUCIONALES EXACTOS (Arial / Fondo Negro / Texto Blanco) ---
-            f_titulo = Font(name="Arial", size=11, bold=True)
-            f_subtitulo = Font(name="Arial", size=10, bold=True)
-            f_italic = Font(name="Arial", size=8, italic=True)
-            f_bold = Font(name="Arial", size=8, bold=True)
-            f_normal = Font(name="Arial", size=7.5)
-            f_nota = Font(name="Arial", size=7, bold=True)
+            # --- ESTILOS INSTITUCIONALES ---
+            f_titulo = Font(name="Arial", size=10, bold=True)
+            f_subtitulo = Font(name="Arial", size=9, bold=True)
+            f_italic = Font(name="Arial", size=7.5, italic=True)
+            f_bold = Font(name="Arial", size=7.5, bold=True)
+            f_normal = Font(name="Arial", size=7)
+            f_nota = Font(name="Arial", size=6.5, bold=True)
 
             fill_header = PatternFill(start_color="FF000000", end_color="FF000000", fill_type="solid")
-            f_header = Font(name="Arial", size=7, bold=True, color="FFFFFFFF")
-            f_sub_header = Font(name="Arial", size=6, bold=False, color="FFFFFFFF")
+            f_header = Font(name="Arial", size=6.5, bold=True, color="FFFFFFFF")
+            f_sub_header = Font(name="Arial", size=5.5, bold=False, color="FFFFFFFF")
 
             thin_border = Border(
                 left=Side(style='thin', color='000000'),
@@ -175,24 +184,30 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
             col_fin_letter = get_column_letter(1 + total_cols)
             col_total_letter = get_column_letter(2 + total_cols)
 
-            # --- INSERTAR LOGOTIPOS ---
-            for img_filename in ["logo_utn.png", "Imagen2.png"]:
-                if os.path.exists(img_filename):
+            ws.row_dimensions[1].height = 42
+
+            # --- INSERTAR LOGOTIPOS CON RUTA ABSOLUTA GARANTIZADA ---
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+
+            for img_name in ["logo_utn.png", "Imagen2.png"]:
+                ruta_img = os.path.join(script_dir, img_name)
+                if os.path.exists(ruta_img):
                     try:
-                        img_utn = OpenpyxlImage(img_filename)
-                        img_utn.width = 50
-                        img_utn.height = 50
+                        img_utn = OpenpyxlImage(ruta_img)
+                        img_utn.width = 40
+                        img_utn.height = 40
                         ws.add_image(img_utn, "A1")
                         break
                     except Exception:
                         pass
 
-            for img_filename in ["logo_iso.png", "Imagen.png"]:
-                if os.path.exists(img_filename):
+            for img_name in ["logo_iso.png", "Imagen.png"]:
+                ruta_img = os.path.join(script_dir, img_name)
+                if os.path.exists(ruta_img):
                     try:
-                        img_iso = OpenpyxlImage(img_filename)
-                        img_iso.width = 50
-                        img_iso.height = 50
+                        img_iso = OpenpyxlImage(ruta_img)
+                        img_iso.width = 40
+                        img_iso.height = 40
                         ws.add_image(img_iso, f"{col_total_letter}1")
                         break
                     except Exception:
@@ -200,8 +215,8 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
 
             # --- ENCABEZADOS DE DOCUMENTO ---
             ws.merge_cells(f"A1:{col_total_letter}1")
-            ws["A1"] = "Control Quincenal de Asistencia Administrativo y Profesor de Tiempo Completo"
-            ws["A1"].font = f_titulo
+            ws["A1"] = "UNIVERSIDAD TECNOLÓGICA DE NOGALES, SONORA\nDirección de Administración y Finanzas\nDepartamento de Recursos Humanos\nControl Quincenal de Asistencia Administrativo y Profesor de Tiempo Completo"
+            ws["A1"].font = Font(name="Arial", size=8, bold=True)
             ws["A1"].alignment = align_center
 
             ws.merge_cells(f"A3:{col_total_letter}3")
@@ -210,8 +225,7 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
             ws["A3"].alignment = align_center
 
             ws.merge_cells(f"A5:{col_total_letter}5")
-            texto_quin = f"Quincena del: {fecha_inicio.strftime('%d/%m/%Y')} al {fecha_fin.strftime('%d/%m/%Y')}"
-            ws["A5"] = texto_quin
+            ws["A5"] = f"Quincena del: {fecha_inicio.strftime('%d/%m/%Y')} al {fecha_fin.strftime('%d/%m/%Y')}"
             ws["A5"].font = f_italic
             ws["A5"].alignment = align_center
 
@@ -269,32 +283,20 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
                 for d in dias_quincena:
                     st_date = datetime.combine(d, datetime.min.time())
                     end_date = datetime.combine(d, datetime.max.time())
-
                     id_dia_bd = d.weekday() + 1
 
-                    q_horario = """
-                        SELECT hora_entrada, hora_salida 
-                        FROM horarios_docentes 
-                        WHERE id_profesor = %s AND id_dia = %s
-                    """
+                    q_horario = "SELECT hora_entrada, hora_salida FROM horarios_docentes WHERE id_profesor = %s AND id_dia = %s"
                     cursor.execute(q_horario, (id_prof, id_dia_bd))
                     horario_doc = cursor.fetchone()
 
-                    q_checadas = """
-                        SELECT fecha_hora FROM checadas 
-                        WHERE id_profesor = %s AND fecha_hora BETWEEN %s AND %s 
-                        ORDER BY fecha_hora ASC
-                    """
+                    q_checadas = "SELECT fecha_hora FROM checadas WHERE id_profesor = %s AND fecha_hora BETWEEN %s AND %s ORDER BY fecha_hora ASC"
                     cursor.execute(q_checadas, (id_prof, st_date, end_date))
                     checadas = [row['fecha_hora'] for row in cursor.fetchall()]
 
                     val_entrada = ""
                     val_salida = ""
 
-                    if d.weekday() >= 5:
-                        val_entrada = "Descanso"
-                        val_salida = "Descanso"
-                    elif not horario_doc:
+                    if not horario_doc:
                         val_entrada = "N/A"
                         val_salida = "N/A"
                     elif not checadas:
@@ -310,17 +312,13 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
 
                         if len(checadas) == 1:
                             p = checadas[0]
-                            if p <= midpoint:
-                                primera_ch, ultima_ch = p, None
-                            else:
-                                primera_ch, ultima_ch = None, p
+                            primera_ch, ultima_ch = (p, None) if p <= midpoint else (None, p)
                         else:
                             primera_ch, ultima_ch = checadas[0], checadas[-1]
 
                         if primera_ch:
                             primera_min = primera_ch.replace(second=0, microsecond=0)
                             limite_tolerancia = dt_entrada_esp + timedelta(minutes=TOLERANCIA_MIN)
-
                             if primera_min <= limite_tolerancia:
                                 val_entrada = primera_ch.strftime("%H:%M")
                             else:
@@ -354,7 +352,7 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
 
                 fila_actual += 1
 
-            # --- PIE DE PÁGINA Y LEYENDAS OFICIALES ---
+            # --- PIE DE PÁGINA Y LEYENDAS ---
             fila_actual += 2
             ws.merge_cells(f"A{fila_actual}:{col_total_letter}{fila_actual}")
             ws[f"A{fila_actual}"] = "En este Control Quincenal aparecen las entradas registradas después del horario estipulado."
@@ -369,37 +367,51 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
 
             fila_actual += 1
             ws.merge_cells(f"A{fila_actual}:{col_total_letter}{fila_actual}")
-            ws[f"A{fila_actual}"] = "Después de los 10 minutos de TOLERANCIA se comenzarán a contar los minutos de Retardo del Personal de UTN. Por ejemplo: Si su entrada fue registrada a las 8:24, se registrarán 14 minutos de retardo."
+            ws[f"A{fila_actual}"] = "Después de los 10 minutos de TOLERANCIA se comenzarán a contar los minutos de Retardo del Personal de UTN."
             ws[f"A{fila_actual}"].font = f_normal
             ws[f"A{fila_actual}"].alignment = align_center
 
             fila_actual += 2
             ws.merge_cells(f"A{fila_actual}:{col_total_letter}{fila_actual}")
-            leyenda_codigos = (
-                "FI = Falta Injustificada        "
-                "I = Incapacidad      "
-                "AM = Atención Médica       "
-                "P = Permiso        "
-                "C = Comisión            "
-                "FIS = Falta, Salida No Registrada       "
-                "FIE= Falta, Entrada No Registrada  "
-                "PS = Permiso Sin Goce de Sueldo"
-            )
-            ws[f"A{fila_actual}"] = leyenda_codigos
+            ws[f"A{fila_actual}"] = "FI = Falta Injustificada    I = Incapacidad    AM = Atención Médica    P = Permiso    C = Comisión    FIS = Salida No Registrada    FIE = Entrada No Registrada"
             ws[f"A{fila_actual}"].font = f_nota
             ws[f"A{fila_actual}"].alignment = align_center
 
-            fila_actual += 2
-            ws.merge_cells(f"A{fila_actual}:{col_total_letter}{fila_actual}")
-            ws[f"A{fila_actual}"] = "Horas Subrayadas: Salidas registradas después del horario estipulado."
-            ws[f"A{fila_actual}"].font = f_italic
-            ws[f"A{fila_actual}"].alignment = align_center
+            # --- BLOQUE INFERIOR (F01PGRRH02.01) ---
+            fila_actual += 3
+            ws.cell(row=fila_actual, column=1, value="F01PGRRH02.01").font = Font(name="Arial", size=6.5, bold=True)
+            ws.cell(row=fila_actual, column=1).alignment = align_left
 
-            # Ajuste compacto de ancho de columnas para impresión correcta
-            ws.column_dimensions['A'].width = 24
+            c_rev_col1 = get_column_letter(total_cols - 1)
+            c_rev_col2 = get_column_letter(total_cols)
+            c_rev_col3 = get_column_letter(total_cols + 1)
+            c_rev_col4 = get_column_letter(total_cols + 2)
+
+            ws.merge_cells(f"{c_rev_col1}{fila_actual}:{c_rev_col1}{fila_actual+1}")
+            ws[f"{c_rev_col1}{fila_actual}"] = "Fecha revisión\n02/04/2025"
+            ws[f"{c_rev_col1}{fila_actual}"].font = Font(name="Arial", size=5, bold=True)
+            ws[f"{c_rev_col1}{fila_actual}"].alignment = align_center
+
+            ws.merge_cells(f"{c_rev_col2}{fila_actual}:{c_rev_col3}{fila_actual+1}")
+            ws[f"{c_rev_col2}{fila_actual}"] = "Hoja 1 de 1"
+            ws[f"{c_rev_col2}{fila_actual}"].font = Font(name="Arial", size=5.5, bold=True)
+            ws[f"{c_rev_col2}{fila_actual}"].alignment = align_center
+
+            ws.merge_cells(f"{c_rev_col4}{fila_actual}:{c_rev_col4}{fila_actual+1}")
+            ws[f"{c_rev_col4}{fila_actual}"] = "Rev. 01"
+            ws[f"{c_rev_col4}{fila_actual}"].font = Font(name="Arial", size=5.5, bold=True)
+            ws[f"{c_rev_col4}{fila_actual}"].alignment = align_center
+
+            for r_idx in range(fila_actual, fila_actual + 2):
+                for col_let in [c_rev_col1, c_rev_col2, c_rev_col3, c_rev_col4]:
+                    ws[f"{col_let}{r_idx}"].border = thin_border
+                    ws[f"{col_let}{r_idx}"].fill = fill_header
+                    ws[f"{col_let}{r_idx}"].font = Font(name="Arial", size=5.5, bold=True, color="FFFFFFFF")
+
+            ws.column_dimensions['A'].width = 22
             for col_i in range(2, 2 + total_cols + 2):
                 col_letter = get_column_letter(col_i)
-                ws.column_dimensions[col_letter].width = 6.5
+                ws.column_dimensions[col_letter].width = 6.0
 
             wb.save(ruta_guardado)
             cursor.close()
@@ -409,10 +421,6 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
             self.lbl_estado_dot.configure(text_color=colores.ESTADO_EXITO)
             messagebox.showinfo("Éxito", f"El reporte ha sido generado correctamente en:\n{ruta_guardado}", parent=self)
 
-        except PermissionError:
-            self.lbl_estado_texto.configure(text="Error: Archivo abierto")
-            self.lbl_estado_dot.configure(text_color=colores.ESTADO_ERROR)
-            messagebox.showerror("Archivo Abierto", "No se pudo guardar el archivo porque ya está abierto en Excel.\nCierra el archivo e intenta de nuevo.", parent=self)
         except Exception as err:
             self.lbl_estado_texto.configure(text="Error al generar reporte")
             self.lbl_estado_dot.configure(text_color=colores.ESTADO_ERROR)
