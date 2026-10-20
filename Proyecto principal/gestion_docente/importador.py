@@ -7,7 +7,7 @@ La idea: el usuario entrega su archivo tal como lo tiene y el programa se adapta
      título no ayuda, por su contenido.
   2. Entiende horarios en formato "una fila por turno" o "una columna por día",
      con horas como 7, 7:00, 07:00, 7am, 0700..., y días como "Lun", "Lunes a Viernes".
-  3. Traduce Áreas y Tipos al catálogo oficial (alias y errores de dedo).
+  3. Traduce Áreas, Tipos y Turnos al catálogo oficial (alias y errores de dedo).
   4. Calcula qué cambiaría (nuevos, actualizaciones, turnos) SIN tocar la base de
      datos; lo dudoso se devuelve como "decisiones" para que el usuario confirme.
   5. Solo cuando el usuario acepta, aplica todo en una transacción.
@@ -21,9 +21,12 @@ from dataclasses import dataclass, field
 from datetime import datetime, time
 from difflib import SequenceMatcher, get_close_matches
 import pandas as pd
+
 from gestion_docente.catalogos import (AREAS, CAMPOS, DIAS, DIAS_CORTO, DIAS_NO_ADMITIDOS, ETIQUETAS,
-                                       INDICE_AREAS, INDICE_TIPOS, NOMBRE_DIA, TIPOS, normalizar, resolver)
+                                     INDICE_AREAS, INDICE_TIPOS, INDICE_TURNOS, NOMBRE_DIA, TIPOS, TURNOS,
+                                     normalizar, resolver)
 from utilerias import database as db
+
 # ───────────────────────────── Horas y días ─────────────────────────────
 
 _HORA = r"\d{1,2}(?:[:.h]?\d{2})?(?::\d{2})?(?:\s*[ap]\.?\s*m\.?)?"
@@ -103,6 +106,15 @@ def texto_turno(turno):
     return f"{DIAS_CORTO.get(dia, NOMBRE_DIA.get(dia, dia))} {entrada}–{salida}"
 
 
+def inferir_turno(turnos):
+    """Matutino / Vespertino / Mixto según las horas de sus turnos; None si no hay horario."""
+    if not turnos:
+        return None
+    manana = any(entrada < "14:00" for _, entrada, _ in turnos)
+    tarde = any(salida > "14:00" for _, _, salida in turnos)
+    return "Mixto" if manana and tarde else "Matutino" if manana else "Vespertino"
+
+
 # ───────────────────────────── Lectura de archivos ─────────────────────────────
 
 def _leer_csv(ruta):
@@ -130,7 +142,6 @@ def leer_hojas(ruta):
         
     hojas = pd.read_excel(ruta, sheet_name=None, header=None, dtype=str, keep_default_na=False)
     
-    # Palabras clave para ignorar pestañas de soporte o plantilla interna
     hojas_excluidas = {"ejemplo", "valores válidos", "valores validos", "plantilla", "instrucciones", "ayuda"}
     hojas_filtradas = {}
     
@@ -150,6 +161,10 @@ class Tabla:
     encabezados: list
     filas: list          # list[list[str]]
     fila0: int           # número (1-based) de la primera fila de datos en el archivo
+
+    @property
+    def sin_encabezado(self):
+        return self.fila0 == 1
 
 
 def _puntos(nh):
@@ -178,20 +193,22 @@ def _dia_de_encabezado(texto):
     return dias[0] if len(dias) == 1 and dias[0] <= 5 and len(normalizar(texto).split()) <= 2 else None
 
 
+def _parece_dato(fila):
+    return any(c and (_RE_PARECE_HORA.search(c) or parse_dias(c)) for c in fila)
+
+
 def _fila_encabezado(filas):
-    """Índice de la fila que parece encabezado (ignora títulos previos); None si no hay encabezado."""
-    mejor, mejor_pts = 0, 0
+    """Índice de la fila que parece encabezado (ignora títulos previos); None si el archivo no trae encabezados."""
+    mejor, mejor_pts = None, 0
     for i, fila in enumerate(filas[:15]):
         pts = sum(1 for c in fila if _puntos(normalizar(c)))
         dias = sum(1 for c in fila if _dia_de_encabezado(c))
         pts += dias if dias >= 2 else 0
         if pts > mejor_pts:
             mejor, mejor_pts = i, pts
-    if mejor_pts:
+    if mejor is not None and (mejor_pts >= 2 or not _parece_dato(filas[mejor])):
         return mejor
-    primera = filas[0] if filas else []
-    parece_dato = any(_RE_PARECE_HORA.search(c) or parse_dias(c) for c in primera if c)
-    return None if parece_dato else 0
+    return None
 
 
 def _construir_tabla(hoja, raw):
@@ -228,6 +245,9 @@ def _detectar_mapeo(t, cols_dia):
         pool = [(fraccion(i, pred), -i) for i in libres()]
         return -max(pool)[1] if pool and max(pool)[0] >= minimo else None
 
+    if "turno" in m and "horario" not in m and fraccion(m["turno"], lambda v: bool(parse_rangos(v))) >= 0.7:
+        m["horario"] = m.pop("turno")                                     # «Turno» = 07:00-12:00
+
     if not cols_dia and "dia" not in m:
         i = mejor_columna(lambda v: bool(parse_dias(v)))
         if i is not None:
@@ -240,13 +260,15 @@ def _detectar_mapeo(t, cols_dia):
         i = mejor_columna(lambda v: bool(parse_rangos(v)))
         if i is not None:
             m["horario"] = i
-    for campo, indice in (("area", INDICE_AREAS), ("tipo", INDICE_TIPOS)):
+    for campo, indice in (("area", INDICE_AREAS), ("tipo", INDICE_TIPOS), ("turno", INDICE_TURNOS)):
         if campo not in m:
             i = mejor_columna(lambda v: resolver(v, indice)[0] is not None)
             if i is not None:
                 m[campo] = i
     if "nombre" not in m:
         i = mejor_columna(lambda v: len(v.split()) >= 2 and not any(ch.isdigit() for ch in v), 0.6)
+        if i is None:                                                     # lista de nombres de una sola palabra
+            i = mejor_columna(lambda v: re.sub(r"[ .,]", "", v).isalpha() and not parse_dias(v), 0.6)
         if i is not None:
             m["nombre"] = i
     return m
@@ -260,6 +282,7 @@ class Fila:
     nombre: str
     area: str
     tipo: str
+    turno: str
     turnos: list
     errores: list
 
@@ -282,6 +305,7 @@ class DocenteImp:
     estado: str = "existente"       # nuevo | actualiza | existente | omitido
     area: str = ""
     tipo: str = ""
+    turno: str = ""
     cambios: list = field(default_factory=list)
     turnos_nuevos: list = field(default_factory=list)
     turnos_quitar: list = field(default_factory=list)      # [(turno, id_horario)]
@@ -296,7 +320,7 @@ class Resultado:
     decisiones: list = field(default_factory=list)
     omitidas: list = field(default_factory=list)
     problema: str = ""
-    turnos_ausentes: int = 0        # turnos ya registrados que el archivo no menciona
+    turnos_ausentes: int = 0
     _idx: dict = field(default_factory=dict, repr=False)
 
     def _cuenta(self, estado):
@@ -311,9 +335,14 @@ class Resultado:
     cambios = property(lambda s: s.nuevos + s.actualizados + s.turnos_nuevos + s.turnos_quitados)
 
 
+_TITULOS = {"dr", "dra", "ing", "inga", "lic", "licda", "mtro", "mtra", "mc", "m", "c", "prof", "profa", "arq",
+            "maestro", "maestra", "doctor", "doctora", "ingeniero", "licenciado"}
+
+
 def clave_nombre(nombre):
-    """Igual para 'Pérez López, Juan' que para 'juan  perez lopez': sin acentos, mayúsculas ni orden."""
-    return " ".join(sorted(normalizar(nombre).split()))
+    """Igual para 'Pérez López, Juan' que para 'Dr. juan  perez lopez': sin acentos, títulos, mayúsculas ni orden."""
+    palabras = [p for p in normalizar(nombre).split() if p not in _TITULOS]
+    return " ".join(sorted(palabras or normalizar(nombre).split()))
 
 
 def _formato_nombre(nombre):
@@ -325,8 +354,8 @@ def _formato_nombre(nombre):
 
 class Importacion:
     MODOS = {
-        "agregar": "Se añadirán únicamente los turnos nuevos y se conservarán intactos todos los horarios previos del docente.",
-        "reemplazar": "El horario se igualará estrictamente al archivo. Se ELIMINARÁN de forma permanente los turnos actuales que no figuren en este documento.",
+        "agregar": "Agregar solo los turnos nuevos y conservar los que ya tiene",
+        "reemplazar": "Reemplazar: dejar su horario igual al archivo (se eliminan los turnos que no aparezcan en él)",
     }
 
     def __init__(self, ruta):
@@ -338,7 +367,9 @@ class Importacion:
         if not self._tablas:
             raise ValueError("El archivo no tiene datos para importar.")
         self.modo = "agregar"
+        self.actualizar_datos = True          # ¿cambiar Área/Tipo/Turno de docentes que ya existen?
         self.decisiones = {}
+        self._cache = {}
         self._cargar_bd()
         self.usar_hoja(self._mejor_hoja())
 
@@ -357,6 +388,11 @@ class Importacion:
     @property
     def columnas(self):
         return self.tabla.encabezados
+
+    def etiqueta_columna(self, i):
+        """Título de la columna más un ejemplo de su contenido, para reconocerla aunque no tenga encabezado."""
+        ejemplo = next((f[i] for f in self.tabla.filas if f[i]), "")
+        return f"{self.tabla.encabezados[i]} · ej. {ejemplo[:18]}" if ejemplo else self.tabla.encabezados[i]
 
     def _cols_dia(self, t):
         return {i: _dia_de_encabezado(h) for i, h in enumerate(t.encabezados) if _dia_de_encabezado(h)}
@@ -409,11 +445,11 @@ class Importacion:
         for i, fila in enumerate(t.filas):
             if not any(fila):
                 continue
-            nombre, area, tipo = celda(fila, "nombre"), celda(fila, "area"), celda(fila, "tipo")
+            nombre, area, tipo, turno = celda(fila, "nombre"), celda(fila, "area"), celda(fila, "tipo"), celda(fila, "turno")
             if not nombre and previa and any(fila[j] for j in idx_horario):        # celdas combinadas de Excel
-                nombre, area, tipo = previa.nombre, area or previa.area, tipo or previa.tipo
+                nombre, area, tipo, turno = previa.nombre, area or previa.area, tipo or previa.tipo, turno or previa.turno
             turnos, errores = self._turnos(fila, celda)
-            self._filas.append(Fila(i + t.fila0, nombre, area, tipo, turnos, errores))
+            self._filas.append(Fila(i + t.fila0, nombre, area, tipo, turno, turnos, errores))
             previa = self._filas[-1]
 
     def _turnos(self, fila, celda):
@@ -476,23 +512,28 @@ class Importacion:
         return dec
 
     def _valor_catalogo(self, res, campo, raw, indice, catalogo, nuevo):
-        """Área/Tipo final: reconoce alias y typos; lo dudoso o desconocido se convierte en decisión."""
+        """Área/Tipo/Turno final: reconoce alias y typos; lo dudoso o desconocido se convierte en decisión."""
         opciones = [(n, n) for n in catalogo]
         if not raw:
-            if not nuevo:
+            if not nuevo or campo == "turno":          # el turno faltante se deduce del horario
                 return None
-            dec = self._decision(res, f"falta:{campo}", f"Docentes nuevos sin {ETIQUETAS[campo]}",
+            dec = self._decision(res, f"falta:{campo}", f"Docentes nuevos sin {ETIQUETAS.get(campo, campo.title())}",
                                  "{n} docente(s) nuevo(s) no traen este dato. Elige uno para todos o no los importes.",
                                  opciones + [("omitir", "No importar a estos docentes")], "omitir")
         else:
-            canon, seguro = resolver(raw, indice)
+            canon, seguro = self._resolver(campo, raw, indice)
             if seguro:
                 return canon
             detalle = (f"Interpreté «{raw}» como «{canon}» ({{n}} docente(s)). ¿Es correcto?" if canon
                        else f"No reconozco «{raw}» ({{n}} docente(s)). Elige a cuál corresponde.")
-            dec = self._decision(res, f"{campo}:{normalizar(raw)}", f"{ETIQUETAS[campo]} «{raw}»", detalle,
+            dec = self._decision(res, f"{campo}:{normalizar(raw)}", f"{ETIQUETAS.get(campo, campo.title())} «{raw}»", detalle,
                                  opciones + [("omitir", "No usar este dato")], canon or "omitir")
         return None if dec.valor == "omitir" else dec.valor
+
+    def _resolver(self, campo, raw, indice):
+        if (campo, raw) not in self._cache:
+            self._cache[(campo, raw)] = resolver(raw, indice)
+        return self._cache[(campo, raw)]
 
     def _posible_coincidencia(self, res, clave, nombre):
         cerca = get_close_matches(clave, list(self.existentes), n=1, cutoff=0.86)
@@ -515,18 +556,23 @@ class Importacion:
             if not f.nombre:
                 res.omitidas.append(f"Fila {f.n}: falta el nombre del docente")
                 continue
-            d = docs.setdefault(clave_nombre(f.nombre), {"nombre": _formato_nombre(f.nombre), "area": "", "tipo": "", "turnos": []})
-            d["area"], d["tipo"] = d["area"] or f.area, d["tipo"] or f.tipo
+            d = docs.setdefault(clave_nombre(f.nombre), {"nombre": _formato_nombre(f.nombre), "area": "", "tipo": "", "turno": "", "turnos": []})
+            d["area"], d["tipo"], d["turno"] = d["area"] or f.area, d["tipo"] or f.tipo, d["turno"] or f.turno
             d["turnos"].extend(f.turnos)
             res.omitidas.extend(f"Fila {f.n}: {e}" for e in f.errores)
 
-        agregados = defaultdict(set)                 # turnos ya propuestos por docente existente
+        agregados = defaultdict(set)
         for clave, d in docs.items():
             prof = self.existentes.get(clave) or self._posible_coincidencia(res, clave, d["nombre"])
             nuevo = prof is None
-            area = self._valor_catalogo(res, "area", d["area"], INDICE_AREAS, AREAS, nuevo)
-            tipo = self._valor_catalogo(res, "tipo", d["tipo"], INDICE_TIPOS, TIPOS, nuevo)
             turnos = list(dict.fromkeys(d["turnos"]))
+            if nuevo or self.actualizar_datos:
+                area = self._valor_catalogo(res, "area", d["area"], INDICE_AREAS, AREAS, nuevo)
+                tipo = self._valor_catalogo(res, "tipo", d["tipo"], INDICE_TIPOS, TIPOS, nuevo)
+                turno = self._valor_catalogo(res, "turno", d["turno"], INDICE_TURNOS, TURNOS, nuevo)
+            else:
+                area = tipo = turno = None
+            
             di = DocenteImp(prof["nombre"] if prof else d["nombre"], prof["id_profesor"] if prof else None)
             res.docentes.append(di)
 
@@ -535,13 +581,19 @@ class Importacion:
                     di.estado = "omitido"
                     di.nota = f"No se importa: falta {'el Área' if not area else 'el Tipo'}" + (f" (y {len(turnos)} turno(s))" if turnos else "")
                     continue
-                di.estado, di.area, di.tipo = "nuevo", area, tipo
+                di.estado, di.area, di.tipo, di.turno = "nuevo", area, tipo, turno or inferir_turno(turnos) or "Matutino"
             else:
-                di.area, di.tipo = area or prof["area"], tipo or prof["tipo"]
+                di.area = area or prof["area"]
+                di.tipo = tipo or prof["tipo"]
+                di.turno = turno or prof.get("turno", "Matutino")
+                
                 if di.area != prof["area"]:
                     di.cambios.append(f"Área: {prof['area']} → {di.area}")
                 if di.tipo != prof["tipo"]:
                     di.cambios.append(f"Tipo: {prof['tipo']} → {di.tipo}")
+                if di.turno != prof.get("turno", "Matutino"):
+                    di.cambios.append(f"Turno: {prof.get('turno', 'Matutino')} → {di.turno}")
+                    
                 di.estado = "actualiza" if di.cambios else "existente"
 
             actuales = self.horarios_bd.get(di.id, {})
@@ -565,7 +617,8 @@ class Importacion:
     # -- aplicar
     def aplicar(self, res):
         docentes = [
-            {"id": d.id, "nombre": d.nombre, "area": d.area, "tipo": d.tipo, "actualizar": d.estado == "actualiza",
+            {"id": d.id, "nombre": d.nombre, "area": d.area, "tipo": d.tipo, "turno": d.turno,
+             "actualizar": d.estado == "actualiza",
              "turnos": d.turnos_nuevos, "quitar": [hid for _, hid in d.turnos_quitar]}
             for d in res.docentes
             if d.estado in ("nuevo", "actualiza") or (d.estado == "existente" and (d.turnos_nuevos or d.turnos_quitar))
@@ -581,48 +634,3 @@ class Importacion:
         if res.turnos_quitados:
             lineas.append(f"➖ {res.turnos_quitados} turno(s) quitado(s)")
         return "\n".join(lineas) or "Todo estaba al día."
-
-
-# ───────────────────────────── Plantilla ─────────────────────────────
-
-def crear_plantilla(ruta):
-    """Genera una plantilla de Excel limpia y profesional con listas desplegables integradas."""
-    from openpyxl import Workbook
-    from openpyxl.styles import Font, PatternFill
-    from openpyxl.worksheet.datavalidation import DataValidation
-
-    wb = Workbook()
-    
-    # 1. Hoja principal de trabajo (limpia y lista para el usuario)
-    ws = wb.active
-    ws.title = "Docentes y horarios"
-    encabezado = ["Nombre", "Área", "Tipo", "Día", "Entrada", "Salida"]
-    ws.append(encabezado)
-    
-    for c in ws[1]:
-        c.font, c.fill = Font(bold=True, color="FFFFFF"), PatternFill("solid", fgColor="4F8FE8")
-    for col, ancho in zip("ABCDEF", (32, 30, 18, 18, 10, 10)):
-        ws.column_dimensions[col].width = ancho
-
-    # 2. Hoja oculta de catálogos (sostiene los menús desplegables sin estorbar visualmente)
-    valores = wb.create_sheet("Valores válidos")
-    valores.sheet_state = 'hidden'
-    
-    valores.append(["Áreas", "Tipos", "Días"])
-    for i in range(max(len(AREAS), len(TIPOS), len(DIAS))):
-        valores.append([
-            list(AREAS)[i] if i < len(AREAS) else None,
-            list(TIPOS)[i] if i < len(TIPOS) else None,
-            list(DIAS)[i] if i < len(DIAS) else None
-        ])
-        
-    for col, ancho in zip("ABC", (32, 18, 14)):
-        valores.column_dimensions[col].width = ancho
-
-    # Enlace de las validaciones de datos con la hoja oculta
-    for columna, n, letra in (("B", len(AREAS), "A"), ("C", len(TIPOS), "B"), ("D", len(DIAS), "C")):
-        dv = DataValidation(type="list", formula1=f"='Valores válidos'!${letra}$2:${letra}${n + 1}", allow_blank=True, showErrorMessage=False)
-        ws.add_data_validation(dv)
-        dv.add(f"{columna}2:{columna}500")
-
-    wb.save(ruta)

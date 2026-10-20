@@ -1,0 +1,2 @@
+2026-10-18 23:29:11,403  INFO  accion=datos docentes=[4] stats={'docentes_creados': 0, 'docentes_actualizados': 1, 'turnos_agregados': 0, 'turnos_quitados': 0}
+2026-10-18 23:30:01,960  INFO  accion=asignar docentes=[4] stats={'docentes_creados': 0, 'docentes_actualizados': 0, 'turnos_agregados': 5, 'turnos_quitados': 0}

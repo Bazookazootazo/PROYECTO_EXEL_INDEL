@@ -22,19 +22,23 @@ except Exception as e:
     db_pool = None
 
 def obtener_conexion():
-    """Obtiene una conexión activa desde el pool."""
+    """Obtiene una conexión activa desde el pool, verificando que esté viva."""
     if db_pool is None:
         raise Exception("El pool de base de datos no está inicializado.")
-    return db_pool.get_connection()
+    conexion = db_pool.get_connection()
+    # Si la conexión se perdió por tiempo de inactividad, se reconecta automáticamente
+    if not conexion.is_connected():
+        conexion.reconnect(attempts=3, delay=1)
+    return conexion
 
 # --- FUNCIONES PARA PROFESORES ---
-def agregar_profesor(nombre, area, tipo):
+def agregar_profesor(nombre, area, tipo, turno):
     conexion = None
     cursor = None
     try:
         conexion = obtener_conexion()
         cursor = conexion.cursor()
-        cursor.execute("INSERT INTO profesores (nombre, area, tipo) VALUES (%s, %s, %s)", (nombre, area, tipo))
+        cursor.execute("INSERT INTO profesores (nombre, area, tipo, turno) VALUES (%s, %s, %s, %s)", (nombre, area, tipo, turno))
         conexion.commit()
         return cursor.lastrowid
     finally:
@@ -48,21 +52,32 @@ def obtener_profesores():
     try:
         conexion = obtener_conexion()
         cursor = conexion.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM profesores ORDER BY nombre ASC")
+        # Seleccionamos campos explícitos y aseguramos un valor por defecto para 'turno'
+        query = """
+            SELECT 
+                id_profesor, 
+                nombre, 
+                area, 
+                tipo, 
+                COALESCE(turno, 'Matutino') AS turno 
+            FROM profesores 
+            ORDER BY nombre ASC
+        """
+        cursor.execute(query)
         return cursor.fetchall()
     finally:
         if cursor: cursor.close()
         if conexion and conexion.is_connected(): conexion.close()
 
-def actualizar_profesor(id_profesor, nombre, area, tipo):
+def actualizar_profesor(id_profesor, nombre, area, tipo, turno):
     conexion = None
     cursor = None
     try:
         conexion = obtener_conexion()
         cursor = conexion.cursor()
         cursor.execute(
-            "UPDATE profesores SET nombre = %s, area = %s, tipo = %s WHERE id_profesor = %s",
-            (nombre, area, tipo, id_profesor)
+            "UPDATE profesores SET nombre = %s, area = %s, tipo = %s, turno = %s WHERE id_profesor = %s",
+            (nombre, area, tipo, turno, id_profesor)
         )
         conexion.commit()
     finally:
@@ -176,13 +191,11 @@ def aplicar_cambios(docentes):
     Excel como las acciones en bloque del CRUD, así ambos comparten reglas y transacción.
 
     `docentes` es una lista de dicts ya revisados y confirmados por el usuario:
-        id: int o None (None = crear)   nombre, area, tipo: str
-        actualizar: bool (True = ya existía y cambia Área/Tipo)
+        id: int o None (None = crear)  nombre, area, tipo, turno: str
+        actualizar: bool (True = ya existía y cambia Área/Tipo/Turno)
         turnos: [(id_dia, hora_entrada, hora_salida), ...]  a insertar
         quitar: [id_horario, ...]  a eliminar
     Todo ocurre en UNA transacción: o se aplica completo o no se aplica nada.
-    Insertar es idempotente (si el turno ya existe no se duplica), por lo que un doble clic
-    o una vista previa vieja no ensucian la base. Devuelve lo que realmente pasó.
     """
     stats = {"docentes_creados": 0, "docentes_actualizados": 0, "turnos_agregados": 0, "turnos_quitados": 0}
     conexion = None
@@ -195,21 +208,29 @@ def aplicar_cambios(docentes):
         for d in docentes:
             if d["id"] is None:
                 cursor.execute(
-                    "INSERT INTO profesores (nombre, area, tipo) VALUES (%s, %s, %s)",
-                    (d["nombre"], d["area"], d["tipo"])
+                    "INSERT INTO profesores (nombre, area, tipo, turno) VALUES (%s, %s, %s, %s)",
+                    (d["nombre"], d["area"], d["tipo"], d["turno"])
                 )
                 d["id"] = cursor.lastrowid
                 stats["docentes_creados"] += 1
             elif d["actualizar"]:
                 cursor.execute(
-                    "UPDATE profesores SET area = %s, tipo = %s WHERE id_profesor = %s",
-                    (d["area"], d["tipo"], d["id"])
+                    "UPDATE profesores SET area = %s, tipo = %s, turno = %s WHERE id_profesor = %s",
+                    (d["area"], d["tipo"], d["turno"], d["id"])
                 )
                 stats["docentes_actualizados"] += 1
 
-            for id_horario in d.get("quitar", []):
-                cursor.execute("DELETE FROM horarios_docentes WHERE id_horario = %s", (id_horario,))
+            # ── OPTIMIZACIÓN PUNTO 3: Eliminación en bloque con IN (...) ──
+            quitar_ids = d.get("quitar", [])
+            if quitar_ids:
+                # Genera dinámicamente los placeholders '%s,%s,%s...' según la cantidad de IDs
+                placeholders = ','.join(['%s'] * len(quitar_ids))
+                query_delete = f"DELETE FROM horarios_docentes WHERE id_horario IN ({placeholders})"
+                
+                # Ejecuta la consulta pasando todos los IDs como una tupla
+                cursor.execute(query_delete, tuple(quitar_ids))
                 stats["turnos_quitados"] += cursor.rowcount
+            # ─────────────────────────────────────────────────────────────
 
             for id_dia, hora_entrada, hora_salida in d.get("turnos", []):
                 cursor.execute(

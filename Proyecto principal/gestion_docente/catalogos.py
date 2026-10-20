@@ -23,6 +23,12 @@ TIPOS = {
     "Asignatura": ["pa", "por asignatura", "por horas", "hora clase", "horas clase", "eventual", "part time"],
 }
 
+TURNOS = {
+    "Matutino": ["matutino", "mañana", "mañanero"],
+    "Vespertino": ["vespertino", "tarde", "tardecita"],
+    "Mixto": ["mixto", "matutino y vespertino"],
+}
+
 DIAS = {"Lunes": 1, "Martes": 2, "Miércoles": 3, "Jueves": 4, "Viernes": 5}
 DIAS_NO_ADMITIDOS = {"Sábado": 6, "Domingo": 7}      # se reconocen para avisar con claridad
 DIAS_CORTO = {1: "Lun", 2: "Mar", 3: "Mié", 4: "Jue", 5: "Vie"}
@@ -36,10 +42,11 @@ CAMPOS = {
     "dia": ["dia", "dias", "dia de la semana", "dia semana"],
     "entrada": ["entrada", "hora entrada", "hora de entrada", "hora inicio", "inicio", "desde"],
     "salida": ["salida", "hora salida", "hora de salida", "hora fin", "fin", "hasta", "termino"],
-    "horario": ["horario", "turno", "hora", "horas"],
+    "turno": ["turno", "jornada"],
+    "horario": ["horario", "hora", "horas"],
 }
 ETIQUETAS = {
-    "nombre": "Nombre", "area": "Área", "tipo": "Tipo", "dia": "Día",
+    "nombre": "Nombre", "area": "Área", "tipo": "Tipo", "turno": "Turno", "dia": "Día",
     "entrada": "Entrada", "salida": "Salida", "horario": "Horario (07:00-12:00)",
 }
 
@@ -59,6 +66,7 @@ def _indice(catalogo):
 
 INDICE_AREAS = _indice(AREAS)
 INDICE_TIPOS = _indice(TIPOS)
+INDICE_TURNOS = _indice(TURNOS)
 
 
 def resolver(valor, indice):

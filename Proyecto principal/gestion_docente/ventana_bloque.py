@@ -1,179 +1,203 @@
-"""
-Diálogo de acciones en bloque sobre los docentes seleccionados.
-
-Ventana polimórfica optimizada para la gestión masiva (cambio de datos, asignación,
-retiro de turnos y bajas de personal) con vista previa en tiempo real.
-"""
 import customtkinter as ctk
-
 from gestion_docente import operaciones_bloque as ops
-from gestion_docente.catalogos import AREAS, DIAS, NOMBRE_DIA, TIPOS
+from gestion_docente.catalogos import AREAS, DIAS, NOMBRE_DIA, TIPOS, TURNOS
 from utilerias.campo_hora import aplicar_formato_hora
-from utilerias.messagebox_variados import mostrar_advertencia, mostrar_error, mostrar_exito, mostrar_pregunta
+from utilerias.messagebox_variados import mostrar_error, mostrar_exito, mostrar_pregunta
 from utilerias.paleta_colores import colores, fuentes
 
-SIN_CAMBIO = "— sin cambio —"
+SIN_CAMBIO = "sin cambio"
 
 ACCIONES = {
-    "datos": dict(icono="✏️", titulo="Actualización Masiva de Área y Tipo", boton="Aplicar cambios", destructiva=False,
-                  color=colores.ACENTO, hover=colores.ACENTO_HOVER,
-                  ayuda="Modifica el Área de adscripción y/o el Tipo de docente para todos los registros seleccionados."),
-    "asignar": dict(icono="🗓", titulo="Asignación de Turno Común", boton="Asignar turno", destructiva=False,
-                    color=colores.EXITO, hover=colores.EXITO_HOVER,
-                    ayuda="Asigna el mismo horario y días especificados a todos los docentes marcados."),
-    "quitar": dict(icono="✂️", titulo="Retirar o Limpiar Turnos", boton="Aplicar cambios", destructiva=True,
-                   color=colores.ADVERTENCIA, hover=colores.ADVERTENCIA_HOVER,
-                   ayuda="Seleccione los turnos que desea retirar de la agenda de los docentes seleccionados."),
-    "eliminar": dict(icono="🗑", titulo="Baja Masiva de Docentes", boton="Eliminar docentes", destructiva=True,
-                     color=colores.PELIGRO, hover=colores.PELIGRO_HOVER,
-                     ayuda="Da de baja permanentemente a los docentes seleccionados junto con su carga horaria."),
+    "datos": dict(titulo="Actualización masiva de datos generales", boton="Aplicar cambios", destructiva=False,
+                  color=colores.ACENTO, hover=colores.ACENTO_HOVER),
+    "asignar": dict(titulo="Asignación masiva de horio(s)", boton="Asignar horio(s)", destructiva=False,
+                    color=colores.EXITO, hover=colores.EXITO_HOVER),
+    "quitar": dict(titulo="Quitar masivamente horarios", boton="Aplicar cambios", destructiva=True,
+                   color=colores.ADVERTENCIA, hover=colores.ADVERTENCIA_HOVER),
 }
-MAX_ITEMS = 8
-
 
 class VentanaBloque(ctk.CTkToplevel):
     def __init__(self, parent, accion, profesores, horarios, on_success_callback=None):
         super().__init__(parent)
+        self.parent = parent
         self.accion, self.profesores, self.horarios = accion, profesores, horarios
-        self.cfg = ACCIONES[accion]
         self.on_success_callback = on_success_callback
         self.plan = None
 
+        # Flujo directo para eliminación masiva (mensaje rápido sin ventana recargada)
+        if accion == "eliminar":
+            self.withdraw()
+            plan = ops.planificar_eliminar(self.profesores, self.horarios)
+            if plan.aplicable:
+                mensaje = (
+                    f"Se eliminarán todos los docentes seleccionados ({len(self.profesores)}) "
+                    f"más sus horarios asociados.\n\n"
+                    f"Procure confirmar si está seguro de la acción."
+                )
+                if mostrar_pregunta("Baja Masiva de Docentes", mensaje, master=parent):
+                    try:
+                        resultado = ops.aplicar(plan)
+                        if self.on_success_callback:
+                            self.on_success_callback()
+                        mostrar_exito(resultado.titulo, resultado.mensaje, master=parent)
+                    except ops.ErrorOperacion as e:
+                        mostrar_error("Error de Operación", str(e), master=parent)
+            self.destroy()
+            return
+
+        self.cfg = ACCIONES[accion]
+
         self.title(self.cfg["titulo"])
-        self.geometry("740x760")
-        self.minsize(640, 560)
+        self.geometry("480x420")
+        self.minsize(480, 420)
         self.resizable(True, True)
         self.configure(fg_color=colores.BG_VENTANA)
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(1, weight=1)
-        self.bind("<Escape>", lambda e: self.destroy())
-        self.after(100, self._tomar_foco)
-
-        self._encabezado()
-        self.cuerpo = ctk.CTkScrollableFrame(self, fg_color="transparent")
-        self.cuerpo.grid(row=1, column=0, sticky="nsew", padx=20, pady=(12, 0))
-        self.cuerpo.grid_columnconfigure(0, weight=1)
         
+        self.grab_set()
+        self.focus_force()
+
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+
+        self.bind("<Escape>", lambda e: self.destroy())
+        self._centrar_ventana(parent, 480, 420)
+
+        main_frame = ctk.CTkFrame(self, corner_radius=14, fg_color=colores.BG_PANEL, border_width=1, border_color=colores.BORDE)
+        main_frame.grid(row=0, column=0, sticky="nsew", padx=12, pady=12)
+        main_frame.grid_columnconfigure(0, weight=1)
+        main_frame.grid_rowconfigure(1, weight=1)
+
+        encabezado = ctk.CTkFrame(main_frame, fg_color="transparent")
+        encabezado.pack(fill="x", padx=16, pady=(14, 8))
+        
+        ctk.CTkLabel(
+            encabezado, text=self.cfg['titulo'],
+            font=fuentes.seccion(size=16), text_color=colores.TEXTO_PRIMARIO,
+            anchor="center"
+        ).pack(fill="x")
+
+        self.form_frame = ctk.CTkScrollableFrame(main_frame, fg_color="transparent")
+        self.form_frame.pack(fill="both", expand=True, padx=16, pady=(0, 8))
+        self.form_frame.grid_columnconfigure(0, weight=1)
+
         {"datos": self._params_datos, "asignar": self._params_asignar,
          "quitar": self._params_quitar}.get(accion, lambda: None)()
          
         self._vista_previa()
-        self._pie()
+
+        pie = ctk.CTkFrame(main_frame, fg_color="transparent")
+        pie.pack(fill="x", padx=16, pady=(0, 14))
+        pie.grid_columnconfigure(0, weight=1)
+
+        self.lbl_estado = ctk.CTkLabel(pie, text="", font=fuentes.pequena(size=11), text_color=colores.TEXTO_SECUNDARIO,
+                                       anchor="w", justify="left")
+        self.lbl_estado.grid(row=0, column=0, sticky="ew", padx=(0, 10))
+
+        btns_frame = ctk.CTkFrame(pie, fg_color="transparent")
+        btns_frame.grid(row=0, column=1, sticky="e")
+
+        btn_cancelar = ctk.CTkButton(
+            btns_frame, text="Cancelar", height=34, corner_radius=8,
+            font=fuentes.boton(size=12), fg_color=colores.NEUTRO, hover_color=colores.NEUTRO_HOVER,
+            command=self.destroy, width=90
+        )
+        btn_cancelar.pack(side="left", padx=(0, 8))
+
+        self.btn_aplicar = ctk.CTkButton(
+            btns_frame, text=self.cfg["boton"], height=34, corner_radius=8,
+            font=fuentes.boton(size=12),
+            fg_color=self.cfg["color"], hover_color=self.cfg["hover"],
+            command=self._aplicar, width=130
+        )
+        self.btn_aplicar.pack(side="left")
+
         self.recalcular()
 
-    def _tomar_foco(self):
+    def _centrar_ventana(self, parent, ancho, alto):
+        self.update_idletasks()
         try:
-            self.grab_set()
-            self.focus_force()
+            px = parent.winfo_rootx()
+            py = parent.winfo_rooty()
+            pw = parent.winfo_width()
+            ph = parent.winfo_height()
+            x = px + (pw - ancho) // 2
+            y = py + (ph - alto) // 2
         except Exception:
-            pass
-
-    # ───────────── Estructura fija ─────────────
-    def _encabezado(self):
-        cab = ctk.CTkFrame(self, corner_radius=14, fg_color=colores.BG_PANEL, border_width=1, border_color=colores.BORDE)
-        cab.grid(row=0, column=0, sticky="ew", padx=20, pady=(20, 0))
-        cab.grid_columnconfigure(0, weight=1)
-
-        lbl_titulo = ctk.CTkLabel(cab, text=f"{self.cfg['icono']}  {self.cfg['titulo']}", font=fuentes.seccion(size=18),
-                                  text_color=colores.TEXTO_PRIMARIO, anchor="w")
-        lbl_titulo.pack(fill="x", padx=18, pady=(16, 2))
-        
-        lbl_ayuda = ctk.CTkLabel(cab, text=self.cfg["ayuda"], font=fuentes.pequena(size=11), text_color=colores.TEXTO_SECUNDARIO,
-                                   anchor="w", justify="left")
-        lbl_ayuda.pack(fill="x", padx=18)
-        cab.bind("<Configure>", lambda e, l=lbl_ayuda: l.configure(wraplength=e.width - 36))
-
-        nombres = ", ".join(p["nombre"].title() for p in self.profesores[:4])
-        resto = len(self.profesores) - 4
-        txt_prof = f"👥  {len(self.profesores)} docente(s) seleccionado(s): {nombres}" + (f" y {resto} más" if resto > 0 else "")
-        lbl_prof = ctk.CTkLabel(cab, text=txt_prof, font=fuentes.boton(size=11), text_color=colores.ACENTO, anchor="w", justify="left")
-        lbl_prof.pack(fill="x", padx=18, pady=(8, 16))
-        cab.bind("<Configure>", lambda e, l=lbl_prof: l.configure(wraplength=e.width - 36))
+            x, y = 100, 100
+        self.geometry(f"{ancho}x{alto}+{x}+{y}")
 
     def _tarjeta(self, titulo, subtitulo=None):
-        card = ctk.CTkFrame(self.cuerpo, corner_radius=12, fg_color=colores.BG_PANEL_ALT, border_width=1, border_color=colores.BORDE_SUAVE)
-        card.pack(fill="x", pady=(0, 12))
+        card = ctk.CTkFrame(self.form_frame, corner_radius=10, fg_color=colores.BG_PANEL_ALT, border_width=1, border_color=colores.BORDE_SUAVE)
+        card.pack(fill="x", pady=(0, 8))
         card.grid_columnconfigure(0, weight=1)
         
-        lbl_t = ctk.CTkLabel(card, text=titulo, font=fuentes.boton(size=13), text_color=colores.TEXTO_PRIMARIO, anchor="w")
-        lbl_t.pack(fill="x", padx=16, pady=(14, 2 if subtitulo else 12))
+        lbl_t = ctk.CTkLabel(card, text=titulo, font=fuentes.boton(size=11), text_color=colores.TEXTO_PRIMARIO, anchor="w")
+        lbl_t.pack(fill="x", padx=12, pady=(10, 2 if subtitulo else 8))
         
         if subtitulo:
-            lbl_sub = ctk.CTkLabel(card, text=subtitulo, font=fuentes.pequena(size=11), text_color=colores.TEXTO_SECUNDARIO, anchor="w", justify="left")
-            lbl_sub.pack(fill="x", padx=16, pady=(0, 12))
-            card.bind("<Configure>", lambda e, l=lbl_sub: l.configure(wraplength=e.width - 32))
+            lbl_sub = ctk.CTkLabel(card, text=subtitulo, font=fuentes.pequena(size=10), text_color=colores.TEXTO_SECUNDARIO, anchor="w", justify="left")
+            lbl_sub.pack(fill="x", padx=12, pady=(0, 8))
+            card.bind("<Configure>", lambda e, l=lbl_sub: l.configure(wraplength=e.width - 24))
         return card
 
-    def _menu(self, padre, valores, ancho=260):
-        return ctk.CTkOptionMenu(padre, values=valores, width=ancho, height=34, font=fuentes.cuerpo(size=12),
+    def _menu(self, padre, valores, ancho=150):
+        return ctk.CTkOptionMenu(padre, values=valores, width=ancho, height=32, font=fuentes.cuerpo(size=11),
                                  fg_color=colores.BG_ENTRADA, button_color=colores.ACENTO,
                                  button_hover_color=colores.ACENTO_HOVER, command=self.recalcular)
 
     def _vista_previa(self):
-        card = self._tarjeta("📋  Vista Previa de Impacto Operativo", "Verifique los cambios que se aplicarán antes de confirmar la operación.")
+        card = self._tarjeta("Vista Previa de Impacto Operativo")
+        # Frame limpio sin scroll interno anidado
         self.vista = ctk.CTkFrame(card, fg_color="transparent")
-        self.vista.pack(fill="x", padx=16, pady=(0, 14))
+        self.vista.pack(fill="x", padx=12, pady=(0, 10))
         self.vista.grid_columnconfigure(0, weight=1)
-
-    def _pie(self):
-        pie = ctk.CTkFrame(self, fg_color="transparent")
-        pie.grid(row=2, column=0, sticky="ew", padx=20, pady=16)
-        pie.grid_columnconfigure(0, weight=1)
-        
-        self.lbl_estado = ctk.CTkLabel(pie, text="", font=fuentes.pequena(size=11), text_color=colores.TEXTO_SECUNDARIO,
-                                       anchor="w", justify="left")
-        self.lbl_estado.grid(row=0, column=0, sticky="ew", padx=(0, 10))
-        
-        btns_frame = ctk.CTkFrame(pie, fg_color="transparent")
-        btns_frame.grid(row=0, column=1, sticky="e")
-        
-        ctk.CTkButton(btns_frame, text="Cancelar", width=110, height=38, corner_radius=10, font=fuentes.boton(size=13),
-                      fg_color=colores.NEUTRO, hover_color=colores.NEUTRO_HOVER,
-                      command=self.destroy).pack(side="left", padx=(0, 8))
-                      
-        self.btn_aplicar = ctk.CTkButton(btns_frame, text=self.cfg["boton"], width=170, height=38, corner_radius=10,
-                                         font=fuentes.boton(size=13), fg_color=self.cfg["color"],
-                                         hover_color=self.cfg["hover"], command=self._aplicar)
-        self.btn_aplicar.pack(side="left")
 
     # ───────────── Parámetros dinámicos por acción ─────────────
     def _params_datos(self):
-        card = self._tarjeta("Configuración de Nuevos Valores", "Seleccione los nuevos datos a aplicar. Mantenga «— sin cambio —» en los campos que no desee modificar.")
+        card = self._tarjeta("Configuración de Nuevos Valores")
         fila = ctk.CTkFrame(card, fg_color="transparent")
-        fila.pack(fill="x", padx=16, pady=(0, 14))
-        self.cmb_area, self.cmb_tipo = None, None
+        fila.pack(fill="x", padx=12, pady=(0, 10))
+        fila.grid_columnconfigure((0, 1, 2), weight=1)
         
-        for etiqueta, valores, atributo in (("Área de adscripción", list(AREAS), "cmb_area"), ("Tipo de docente", list(TIPOS), "cmb_tipo")):
+        self.cmb_area, self.cmb_tipo, self.cmb_turno = None, None, None
+        
+        campos = [
+            ("Área", list(AREAS), "cmb_area"),
+            ("Tipo", list(TIPOS), "cmb_tipo"),
+            ("Turno", list(TURNOS), "cmb_turno")
+        ]
+        
+        for idx, (etiqueta, valores, atributo) in enumerate(campos):
             sub = ctk.CTkFrame(fila, fg_color="transparent")
-            sub.pack(side="left", padx=(0, 16), fill="x", expand=True)
-            ctk.CTkLabel(sub, text=etiqueta, font=fuentes.pequena(size=10), text_color=colores.TEXTO_TENUE).pack(anchor="w", pady=(0, 3))
-            menu = self._menu(sub, [SIN_CAMBIO, *valores], 270 if atributo == "cmb_area" else 200)
+            sub.grid(row=0, column=idx, sticky="ew", padx=(0, 6 if idx < 2 else 0))
+            ctk.CTkLabel(sub, text=etiqueta, font=fuentes.pequena(size=10), text_color=colores.TEXTO_TENUE).pack(anchor="w", pady=(0, 2))
+            menu = self._menu(sub, [SIN_CAMBIO, *valores], 150)
             menu.set(SIN_CAMBIO)
             menu.pack(anchor="w", fill="x")
             setattr(self, atributo, menu)
 
     def _params_asignar(self):
-        card = self._tarjeta("Configuración del Turno", "Marque los días correspondientes e ingrese el horario en formato de 24 horas (ej. 07:00 a 12:00).")
+        card = self._tarjeta("Configuración del Turno")
         
         dias_frame = ctk.CTkFrame(card, fg_color="transparent")
-        dias_frame.pack(fill="x", padx=16, pady=(0, 12))
+        dias_frame.pack(fill="x", padx=12, pady=(0, 8))
         self.var_dias = {}
         for nombre, id_dia in DIAS.items():
             var = ctk.BooleanVar(value=False)
-            ctk.CTkCheckBox(dias_frame, text=nombre, variable=var, command=self.recalcular, checkbox_width=18,
-                            checkbox_height=18, fg_color=colores.ACENTO, hover_color=colores.ACENTO_HOVER,
-                            border_color=colores.BORDE_CLARO, font=fuentes.cuerpo(size=12)).pack(side="left", padx=(0, 12))
+            ctk.CTkCheckBox(dias_frame, text=nombre[:3], variable=var, command=self.recalcular, checkbox_width=16,
+                            checkbox_height=16, fg_color=colores.ACENTO, hover_color=colores.ACENTO_HOVER,
+                            border_color=colores.BORDE_CLARO, font=fuentes.cuerpo(size=11), width=65).pack(side="left", padx=(0, 6), pady=2)
             self.var_dias[id_dia] = var
 
         horas_frame = ctk.CTkFrame(card, fg_color="transparent")
-        horas_frame.pack(fill="x", padx=16, pady=(0, 12))
+        horas_frame.pack(fill="x", padx=12, pady=(0, 8))
         self.ent_entrada, self.ent_salida = None, None
         
-        for etiqueta, atributo, ejemplo in (("Hora de entrada", "ent_entrada", "07:00"), ("Hora de salida", "ent_salida", "16:00")):
+        for etiqueta, atributo, ejemplo in (("Entrada", "ent_entrada", "07:00"), ("Salida", "ent_salida", "16:00")):
             sub = ctk.CTkFrame(horas_frame, fg_color="transparent")
-            sub.pack(side="left", padx=(0, 16))
-            ctk.CTkLabel(sub, text=etiqueta, font=fuentes.pequena(size=10), text_color=colores.TEXTO_TENUE).pack(anchor="w", pady=(0, 3))
-            entrada = ctk.CTkEntry(sub, width=120, height=34, placeholder_text=ejemplo, font=fuentes.cuerpo(size=13),
+            sub.pack(side="left", padx=(0, 12))
+            ctk.CTkLabel(sub, text=etiqueta, font=fuentes.pequena(size=10), text_color=colores.TEXTO_TENUE).pack(anchor="w", pady=(0, 2))
+            entrada = ctk.CTkEntry(sub, width=100, height=32, placeholder_text=ejemplo, font=fuentes.cuerpo(size=12),
                                    fg_color=colores.BG_ENTRADA, border_color=colores.BORDE)
             entrada.pack(anchor="w")
             aplicar_formato_hora(entrada)
@@ -181,44 +205,43 @@ class VentanaBloque(ctk.CTkToplevel):
             setattr(self, atributo, entrada)
 
         self.var_traslape = ctk.BooleanVar(value=False)
-        ctk.CTkCheckBox(card, text="Permitir asignación aun cuando existan horarios previos (solo cuando las horas coincidan)", variable=self.var_traslape,
-                        command=self.recalcular, checkbox_width=18, checkbox_height=18, fg_color=colores.ACENTO,
+        ctk.CTkCheckBox(card, text="Permitir asignación con traslape de horas coincidentes", variable=self.var_traslape,
+                        command=self.recalcular, checkbox_width=16, checkbox_height=16, fg_color=colores.ACENTO,
                         hover_color=colores.ACENTO_HOVER, border_color=colores.BORDE_CLARO,
-                        font=fuentes.pequena(size=11), text_color=colores.TEXTO_SECUNDARIO).pack(anchor="w", padx=16, pady=(0, 14))
+                        font=fuentes.pequena(size=10), text_color=colores.TEXTO_SECUNDARIO).pack(anchor="w", padx=12, pady=(0, 10))
 
     def _params_quitar(self):
         turnos = ops.turnos_en_seleccion(self.profesores, self.horarios)
-        subt = "Marque los turnos que desea retirar. Puede usar los botones rápidos para marcar o desmarcar todos." if turnos else None
-        card = self._tarjeta("Turnos Registrados en la Selección", subt)
+        card = self._tarjeta("Turnos Registrados en la Selección")
         self.var_turnos = {}
         
         if not turnos:
-            ctk.CTkLabel(card, text="📭  No se encontraron turnos activos en los docentes seleccionados.", font=fuentes.cuerpo(size=12),
-                         text_color=colores.TEXTO_TENUE).pack(padx=16, pady=(0, 16))
+            ctk.CTkLabel(card, text="No se encontraron turnos activos.", font=fuentes.cuerpo(size=11),
+                         text_color=colores.TEXTO_TENUE).pack(padx=12, pady=(0, 10))
             return
             
         marcar = ctk.CTkFrame(card, fg_color="transparent")
-        marcar.pack(fill="x", padx=16, pady=(0, 8))
+        marcar.pack(fill="x", padx=12, pady=(0, 6))
         for texto, valor in (("Marcar todos", True), ("Desmarcar todos", False)):
-            ctk.CTkButton(marcar, text=texto, width=120, height=28, corner_radius=7, font=fuentes.pequena(size=11),
+            ctk.CTkButton(marcar, text=texto, width=100, height=24, corner_radius=6, font=fuentes.pequena(size=10),
                           fg_color=colores.NEUTRO, hover_color=colores.NEUTRO_HOVER,
-                          command=lambda v=valor: self._marcar_turnos(v)).pack(side="left", padx=(0, 8))
+                          command=lambda v=valor: self._marcar_turnos(v)).pack(side="left", padx=(0, 6))
                           
-        turnos_container = ctk.CTkScrollableFrame(card, fg_color="transparent", height=180)
-        turnos_container.pack(fill="x", padx=16, pady=(0, 14))
+        turnos_container = ctk.CTkFrame(card, fg_color="transparent")
+        turnos_container.pack(fill="x", padx=12, pady=(0, 8))
         turnos_container.grid_columnconfigure(0, weight=1)
 
         for clave, quienes in turnos:
             var = ctk.BooleanVar(value=False)
             dia, entrada, salida = clave
             fila = ctk.CTkFrame(turnos_container, fg_color="transparent")
-            fila.pack(fill="x", pady=2)
+            fila.pack(fill="x", pady=1)
             fila.grid_columnconfigure(0, weight=1)
             
             ctk.CTkCheckBox(fila, text=f"{NOMBRE_DIA[dia]}    {entrada} – {salida}", variable=var, command=self.recalcular,
-                            checkbox_width=18, checkbox_height=18, fg_color=colores.ACENTO, hover_color=colores.ACENTO_HOVER,
-                            border_color=colores.BORDE_CLARO, font=fuentes.cuerpo(size=12)).grid(row=0, column=0, sticky="w")
-            ctk.CTkLabel(fila, text=f"{len(quienes)} docente(s)", font=fuentes.pequena(size=11),
+                            checkbox_width=16, checkbox_height=16, fg_color=colores.ACENTO, hover_color=colores.ACENTO_HOVER,
+                            border_color=colores.BORDE_CLARO, font=fuentes.cuerpo(size=11)).grid(row=0, column=0, sticky="w")
+            ctk.CTkLabel(fila, text=f"{len(quienes)} docente(s)", font=fuentes.pequena(size=10),
                          text_color=colores.TEXTO_TENUE).grid(row=0, column=1, sticky="e")
             self.var_turnos[clave] = var
 
@@ -227,12 +250,11 @@ class VentanaBloque(ctk.CTkToplevel):
             var.set(valor)
         self.recalcular()
 
-    # ───────────── Recálculo y Vista Previa ─────────────
     def recalcular(self, *_):
         a = self.accion
         if a == "datos":
-            valor = lambda m: None if m.get() == SIN_CAMBIO else m.get()
-            plan = ops.planificar_datos(self.profesores, valor(self.cmb_area), valor(self.cmb_tipo))
+            valor = lambda m: None if not m or m.get() == SIN_CAMBIO else m.get()
+            plan = ops.planificar_datos(self.profesores, valor(self.cmb_area), valor(self.cmb_tipo), valor(self.cmb_turno))
         elif a == "asignar":
             dias = [i for i, v in self.var_dias.items() if v.get()]
             plan = ops.planificar_asignacion(self.profesores, self.horarios, dias, self.ent_entrada.get(),
@@ -242,7 +264,7 @@ class VentanaBloque(ctk.CTkToplevel):
             if not self.var_turnos:
                 plan.error = "No hay turnos disponibles para procesar."
         else:
-            plan = ops.planificar_eliminar(self.profesores, self.horarios)
+            plan = ops.Plan("eliminar")
         self.plan = plan
         self._mostrar_plan(plan)
 
@@ -251,39 +273,35 @@ class VentanaBloque(ctk.CTkToplevel):
             w.destroy()
 
         if plan.error:
-            ctk.CTkLabel(self.vista, text=f"ℹ️  {plan.error}", font=fuentes.cuerpo(size=12), text_color=colores.ADVERTENCIA,
-                         anchor="w", justify="left").pack(fill="x", pady=(0, 4))
+            ctk.CTkLabel(self.vista, text=plan.error, font=fuentes.cuerpo(size=11), text_color=colores.ADVERTENCIA,
+                         anchor="w", justify="left").pack(fill="x", pady=(0, 2))
         else:
             color = {"ok": colores.TEXTO_PRIMARIO, "info": colores.TEXTO_SECUNDARIO, "aviso": colores.ADVERTENCIA}
             for ln in plan.lineas:
                 bloque = ctk.CTkFrame(self.vista, fg_color="transparent")
-                bloque.pack(fill="x", pady=(0, 6))
+                bloque.pack(fill="x", pady=(0, 4))
                 
-                lbl_ln = ctk.CTkLabel(bloque, text=f"{ln.icono}  {ln.texto}",
-                                      font=fuentes.cuerpo(size=12) if ln.nivel == "info" else fuentes.boton(size=12), 
+                lbl_ln = ctk.CTkLabel(bloque, text=ln.texto,
+                                      font=fuentes.cuerpo(size=11) if ln.nivel == "info" else fuentes.boton(size=11), 
                                       text_color=color[ln.nivel], anchor="w", justify="left")
                 lbl_ln.pack(fill="x")
                 bloque.bind("<Configure>", lambda e, l=lbl_ln: l.configure(wraplength=e.width))
 
                 if ln.detalle:
-                    visibles = ln.detalle[:MAX_ITEMS]
-                    texto = ("\n" if ln.lista else ", ").join(f"•  {d}" if ln.lista else d for d in visibles)
-                    if len(ln.detalle) > MAX_ITEMS:
-                        texto += f"\n… y {len(ln.detalle) - MAX_ITEMS} más" if ln.lista else f", … y {len(ln.detalle) - MAX_ITEMS} más"
-                    lbl_det = ctk.CTkLabel(bloque, text=texto, font=fuentes.pequena(size=11), text_color=colores.TEXTO_TENUE,
+                    texto = ("\n" if ln.lista else ", ").join(f"•  {d}" if ln.lista else d for d in ln.detalle)
+                    lbl_det = ctk.CTkLabel(bloque, text=texto, font=fuentes.pequena(size=10), text_color=colores.TEXTO_TENUE,
                                            anchor="w", justify="left")
-                    lbl_det.pack(fill="x", padx=(24, 0), pady=(2, 0))
-                    bloque.bind("<Configure>", lambda e, l=lbl_det: l.configure(wraplength=e.width - 24))
+                    lbl_det.pack(fill="x", padx=(20, 0), pady=(1, 0))
+                    bloque.bind("<Configure>", lambda e, l=lbl_det: l.configure(wraplength=e.width - 20))
 
         self.btn_aplicar.configure(state="normal" if plan.aplicable else "disabled")
         if plan.error:
             self.lbl_estado.configure(text="")
         elif not plan.cambios:
-            self.lbl_estado.configure(text="No se detectan cambios aplicables con los parámetros actuales.")
+            self.lbl_estado.configure(text="No se detectan cambios aplicables.")
         else:
             self.lbl_estado.configure(text=plan.resumen)
 
-    # ───────────── Ejecución ─────────────
     def _aplicar(self):
         plan = self.plan
         if not plan or not plan.aplicable:
@@ -303,5 +321,5 @@ class VentanaBloque(ctk.CTkToplevel):
 
         if self.on_success_callback:
             self.on_success_callback()
-        (mostrar_advertencia if resultado.parcial else mostrar_exito)(resultado.titulo, resultado.mensaje, master=self)
+        mostrar_exito(resultado.titulo, resultado.mensaje, master=self)
         self.destroy()

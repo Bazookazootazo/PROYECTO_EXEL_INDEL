@@ -1,94 +1,35 @@
-"""
-Diálogo de importación masiva de docentes y horarios.
 
-Flujo pensado para que el usuario no tenga que "aprender" el formato:
-  1. Elige su archivo (o descarga una plantilla si no tiene uno).
-  2. El programa lo interpreta solo y muestra EN LENGUAJE LLANO qué entendió
-     de cada columna y qué va a pasar (cuántos docentes nuevos, cuántos turnos).
-  3. Si algo fue ambiguo (un Área que no reconoce, un posible duplicado), se
-     lo pregunta con un desplegable — nunca lo decide en silencio ni tampoco
-     detiene todo el proceso por una sola duda.
-  4. Nada se guarda hasta que el usuario presiona "Aplicar cambios".
-"""
 from tkinter import filedialog
 import customtkinter as ctk
-from gestion_docente.importador import Importacion, crear_plantilla
+from gestion_docente.importador import Importacion
 from utilerias.messagebox_variados import mostrar_error, mostrar_exito, mostrar_pregunta
 from utilerias.paleta_colores import colores, fuentes
 
 TIPOS_ARCHIVO = [("Excel y CSV", "*.xlsx *.xls *.csv"), ("Todos los archivos", "*.*")]
+NINGUNA = "— ninguna —"
+CAMPOS_UI = {"nombre": "Nombre del docente (obligatorio)", "area": "Área", "tipo": "Tipo", "turno": "Turno",
+             "dia": "Día", "entrada": "Entrada", "salida": "Salida", "horario": "Horario (07:00-12:00)"}
 
-class VentanaImportar(ctk.CTkToplevel):
-    """Punto de entrada: ofrece plantilla o abrir un archivo ya existente."""
-
-    def __init__(self, parent, on_success_callback=None):
-        super().__init__(parent)
-        self.on_success_callback = on_success_callback
-        self.title("Importar Docentes y Horarios")
-        self.geometry("460x300")
-        self.resizable(False, False)
-        self.configure(fg_color=colores.BG_VENTANA)
-        self.grab_set()
-        self.focus_force()
-
-        main = ctk.CTkFrame(self, corner_radius=18, fg_color=colores.BG_PANEL, border_width=1, border_color=colores.BORDE)
-        main.pack(fill="both", expand=True, padx=18, pady=18)
-
-        ctk.CTkLabel(main, text="📁  Importar desde Excel o CSV", font=fuentes.seccion(size=18), text_color=colores.TEXTO_PRIMARIO).pack(pady=(26, 6))
-        ctk.CTkLabel(
-            main, text="Trae tu propio archivo con la lista de docentes y sus\nhorarios — el programa entiende el formato solo.",
-            font=fuentes.pequena(size=12), text_color=colores.TEXTO_SECUNDARIO, justify="center",
-        ).pack(pady=(0, 24))
-
-        ctk.CTkButton(
-            main, text="Seleccionar mi archivo", height=42, corner_radius=10, font=fuentes.boton(size=14),
-            fg_color=colores.ACENTO, hover_color=colores.ACENTO_HOVER, command=self._elegir_archivo,
-        ).pack(fill="x", padx=28, pady=(0, 10))
-
-        ctk.CTkButton(
-            main, text="⬇  No tengo uno — descargar plantilla", height=38, corner_radius=10, font=fuentes.boton(size=13),
-            fg_color=colores.NEUTRO, hover_color=colores.NEUTRO_HOVER, command=self._descargar_plantilla,
-        ).pack(fill="x", padx=28)
-
-        ctk.CTkLabel(
-            main, text="Acepta docentes nuevos, actualizaciones de los que ya existen\ny sus horarios, todo en el mismo archivo.",
-            font=fuentes.pequena(size=10), text_color=colores.TEXTO_TENUE, justify="center",
-        ).pack(pady=(20, 0))
-
-    def _descargar_plantilla(self):
-        ruta = filedialog.asksaveasfilename(
-            title="Guardar plantilla", defaultextension=".xlsx",
-            initialfile="Plantilla_Docentes_Horarios.xlsx", filetypes=[("Excel", "*.xlsx")],
-        )
-        if not ruta:
-            return
-        try:
-            crear_plantilla(ruta)
-            mostrar_exito("Listo", "Plantilla guardada. Ábrela, llénala y vuelve a este menú para importarla.", master=self)
-        except Exception as e:
-            mostrar_error("Error", f"No se pudo crear la plantilla:\n{e}", master=self)
-
-    def _elegir_archivo(self):
-        ruta = filedialog.askopenfilename(title="Selecciona el archivo a importar", filetypes=TIPOS_ARCHIVO)
-        if not ruta:
-            return
-        try:
-            importacion = Importacion(ruta)
-        except Exception as e:
-            mostrar_error("No se pudo leer el archivo", str(e), master=self)
-            return
-        self.withdraw()
-        VentanaRevision(self.master, importacion, on_success_callback=self.on_success_callback, ventana_previa=self)
+def VentanaImportar(parent, on_success_callback=None):
+    """Punto de entrada: el usuario elige su archivo tal como lo tiene y pasa directo a la revisión."""
+    ruta = filedialog.askopenfilename(parent=parent, title="Selecciona el archivo a importar", filetypes=TIPOS_ARCHIVO)
+    if not ruta:
+        return None
+    try:
+        importacion = Importacion(ruta)
+    except Exception as e:
+        mostrar_error("No se pudo leer el archivo", str(e), master=parent)
+        return None
+    return VentanaRevision(parent, importacion, on_success_callback=on_success_callback)
 
 
 class VentanaRevision(ctk.CTkToplevel):
     """Muestra cómo se interpretó el archivo y deja confirmar antes de guardar nada."""
 
-    def __init__(self, parent, importacion, on_success_callback=None, ventana_previa=None):
+    def __init__(self, parent, importacion, on_success_callback=None):
         super().__init__(parent)
         self.importacion = importacion
         self.on_success_callback = on_success_callback
-        self.ventana_previa = ventana_previa
 
         self.title(f"Revisar importación — {importacion.archivo}")
         self.geometry("820x680")
@@ -151,13 +92,13 @@ class VentanaRevision(ctk.CTkToplevel):
             w.destroy()
 
         imp = self.importacion
+        sin_enc = " · sin encabezados (columnas identificadas por su contenido)" if imp.tabla.sin_encabezado else ""
         self.lbl_resumen_archivo.configure(
-            text=f"Hoja «{imp.tabla.hoja}» · {len(imp._filas)} fila(s) de datos · interpretada como {imp.descripcion}"
+            text=f"Hoja «{imp.tabla.hoja}» · {len(imp._filas)} fila(s) de datos · interpretada como {imp.descripcion}{sin_enc}"
         )
 
         self._seccion_mapeo()
-        if imp.hay_horarios:
-            self._seccion_modo()
+        self._seccion_modo()
 
         self.resultado = imp.analizar()
         if self.resultado.decisiones:
@@ -188,31 +129,31 @@ class VentanaRevision(ctk.CTkToplevel):
 
     def _seccion_mapeo(self):
         imp = self.importacion
-        etiquetas = {"nombre": "Nombre del Docente", "area": "Área", "tipo": "Tipo", "dia": "Día", "entrada": "Entrada", "salida": "Salida", "horario": "Horario"}
-        card = self._tarjeta("⚙️  Asignación de Columnas", "Verifique la correspondencia de los campos detectados. Puede reasignarlos manualmente de ser necesario.")
-        
-        fila = ctk.CTkFrame(card, fg_color="transparent")
-        fila.pack(fill="x", padx=16, pady=(0, 14))
+        subtitulo = ("Tu archivo no trae encabezados: identifiqué cada columna por su contenido. Confirma que sea correcto."
+                     if imp.tabla.sin_encabezado else "Confirma que cada dato esté en la columna correcta; puedes cambiarla aquí.")
+        card = self._tarjeta("⚙️  Asignación de Columnas", subtitulo)
 
-        opciones_col = ["— ninguna —"] + imp.columnas
-        for campo in ["nombre", "area", "tipo"] + ([] if imp.ancho else ["dia", "entrada", "salida", "horario"]):
-            sub = ctk.CTkFrame(fila, fg_color="transparent")
-            sub.pack(side="left", padx=(0, 14), pady=4)
-            ctk.CTkLabel(sub, text=etiquetas[campo], font=fuentes.pequena(size=10), text_color=colores.TEXTO_TENUE).pack(anchor="w")
-            
-            actual = imp.columnas[imp.mapeo[campo]] if campo in imp.mapeo else "— ninguna —"
-            cmb = ctk.CTkOptionMenu(sub, values=opciones_col, width=140, height=30, font=fuentes.pequena(size=11),
+        grid = ctk.CTkFrame(card, fg_color="transparent")
+        grid.pack(fill="x", padx=16, pady=(0, 14))
+        self._etq_cols = [imp.etiqueta_columna(i) for i in range(len(imp.columnas))]
+        opciones = [NINGUNA] + self._etq_cols
+        campos = ["nombre", "area", "tipo", "turno"] + ([] if imp.ancho else ["dia", "entrada", "salida", "horario"])
+        for n, campo in enumerate(campos):
+            sub = ctk.CTkFrame(grid, fg_color="transparent")
+            sub.grid(row=n // 4, column=n % 4, sticky="w", padx=(0, 12), pady=4)
+            ctk.CTkLabel(sub, text=CAMPOS_UI[campo], font=fuentes.pequena(size=10), text_color=colores.TEXTO_TENUE).pack(anchor="w")
+            cmb = ctk.CTkOptionMenu(sub, values=opciones, width=170, height=30, font=fuentes.pequena(size=11),
                                     fg_color=colores.BG_ENTRADA, button_color=colores.ACENTO, button_hover_color=colores.ACENTO_HOVER,
                                     command=lambda val, c=campo: self._remapear(c, val))
-            cmb.set(actual)
+            cmb.set(self._etq_cols[imp.mapeo[campo]] if campo in imp.mapeo else NINGUNA)
             cmb.pack(anchor="w")
-            
+
         if imp.ancho:
             ctk.CTkLabel(card, text=f"Estructura detectada: Formato matricial por columnas ({imp.descripcion.split('(')[1][:-1]}).",
                         font=fuentes.pequena(size=11), text_color=colores.TEXTO_SECUNDARIO, anchor="w").pack(fill="x", padx=16, pady=(0, 14))
 
     def _remapear(self, campo, valor):
-        indice = None if valor == "— ninguna —" else self.importacion.columnas.index(valor)
+        indice = None if valor == NINGUNA else self._etq_cols.index(valor)
         self.importacion.mapear(campo, indice)
         self.refrescar()
 
@@ -221,43 +162,41 @@ class VentanaRevision(ctk.CTkToplevel):
         self.refrescar()
 
     def _seccion_modo(self):
-        card = self._tarjeta("🔄  Política de Sincronización de Horarios", "Seleccione el criterio operativo para los docentes que ya cuentan con horarios registrados:")
+        imp = self.importacion
+        edita_datos = any(c in imp.mapeo for c in ("area", "tipo", "turno"))
+        if not (edita_datos or imp.hay_horarios):
+            return
+        card = self._tarjeta("🔄  Docentes que ya existen", "Elige qué hacer cuando el archivo menciona a un docente ya registrado:")
         cont = ctk.CTkFrame(card, fg_color="transparent")
         cont.pack(fill="x", padx=16, pady=(0, 14))
-        
-        self.var_modo = ctk.StringVar(value=self.importacion.modo)
-        
-        # Opción 1: Segura / Aditiva
-        ctk.CTkRadioButton(
-            cont, 
-            text="No actualiza los datos existentes y solo agrega los nuevos.", 
-            variable=self.var_modo, 
-            value="agregar", 
-            font=fuentes.boton(size=12),
-            text_color=colores.TEXTO_PRIMARIO, 
-            fg_color=colores.ACENTO, 
-            command=self._cambiar_modo
-        ).pack(anchor="w", pady=(2, 6))
 
-        # Opción 2: Destructiva / Reemplazo (Resaltada con color de advertencia/peligro)
-        ctk.CTkRadioButton(
-            cont, 
-            text="⚠️ Sobrescribe por completo (remplaza los todos las datos guardados por los datos propuestos por el archivo).", 
-            variable=self.var_modo, 
-            value="reemplazar", 
-            font=fuentes.boton(size=12),
-            text_color=colores.ADVERTENCIA, 
-            fg_color=colores.ADVERTENCIA, 
-            hover_color=colores.ADVERTENCIA_HOVER,
-            command=self._cambiar_modo
-        ).pack(anchor="w", pady=(2, 2))
+        if edita_datos:
+            self.var_datos = ctk.BooleanVar(value=imp.actualizar_datos)
+            ctk.CTkCheckBox(cont, text="Actualizar su Área, Tipo y Turno si el archivo trae un dato distinto", variable=self.var_datos,
+                            font=fuentes.boton(size=12), text_color=colores.TEXTO_PRIMARIO, fg_color=colores.ACENTO,
+                            command=self._cambiar_datos).pack(anchor="w", pady=(2, 8))
+        if imp.hay_horarios:
+            ctk.CTkLabel(cont, text="Sus horarios:", font=fuentes.pequena(size=11), text_color=colores.TEXTO_SECUNDARIO).pack(anchor="w")
+            self.var_modo = ctk.StringVar(value=imp.modo)
+            for valor, texto in Importacion.MODOS.items():
+                peligro = valor == "reemplazar"
+                ctk.CTkRadioButton(
+                    cont, text=("⚠️ " if peligro else "") + texto, variable=self.var_modo, value=valor, font=fuentes.boton(size=12),
+                    text_color=colores.ADVERTENCIA if peligro else colores.TEXTO_PRIMARIO,
+                    fg_color=colores.ADVERTENCIA if peligro else colores.ACENTO,
+                    hover_color=colores.ADVERTENCIA_HOVER if peligro else colores.ACENTO_HOVER, command=self._cambiar_modo,
+                ).pack(anchor="w", pady=2)
+
+    def _cambiar_datos(self):
+        self.importacion.actualizar_datos = self.var_datos.get()
+        self.refrescar()
 
     def _cambiar_modo(self):
         self.importacion.modo = self.var_modo.get()
         self.refrescar()
 
     def _seccion_decisiones(self):
-        card = self._tarjeta("⚠️  Validación de Registros Ambiguos", "Se requiere su autorización para resolver las siguientes discrepancias detectadas:")
+        card = self._tarjeta("⚠️  Validación de Registros Ambiguos", "No estoy seguro de estos datos. Cada uno ya trae mi sugerencia: confírmala o cámbiala.")
         
         for dec in self.resultado.decisiones:
             fila = ctk.CTkFrame(card, fg_color=colores.BG_SUPERFICIE, corner_radius=8)
@@ -292,13 +231,20 @@ class VentanaRevision(ctk.CTkToplevel):
             ctk.CTkLabel(f, text=texto, font=fuentes.cuerpo(size=12), text_color=color, anchor="w").pack(side="left")
 
         if r.nuevos: linea("🆕", f"{r.nuevos} registro(s) de docente(s) nuevo(s)")
-        if r.actualizados: linea("🔄", f"{r.actualizados} docente(s) con actualización de Área o Tipo")
+        if r.actualizados: linea("🔄", f"{r.actualizados} docente(s) con cambios de Área, Tipo o Turno")
         if r.turnos_nuevos: linea("🗓", f"{r.turnos_nuevos} nuevo(s) turno(s) por incorporar")
         if r.turnos_quitados: linea("➖", f"{r.turnos_quitados} turno(s) programados para baja (ausentes en archivo)", colores.PELIGRO)
+        if r.turnos_ausentes and self.importacion.modo == "agregar":
+            linea("ℹ️", f"{r.turnos_ausentes} turno(s) guardados no aparecen en el archivo (se conservan)", colores.TEXTO_SECUNDARIO)
         if r.turnos_iguales: linea("✅", f"{r.turnos_iguales} turno(s) sin modificaciones (coincidentes)")
         if r.omitidos: linea("⏭", f"{r.omitidos} registro(s) omitidos por falta de información obligatoria", colores.ADVERTENCIA)
         if not any((r.nuevos, r.actualizados, r.turnos_nuevos, r.turnos_quitados, r.turnos_iguales, r.omitidos)):
             linea("💤", "No se detectaron cambios ni registros procesables en el archivo.", colores.TEXTO_SECUNDARIO)
+        if r.docentes:
+            btn = ctk.CTkButton(cont, text="Ver detalle por docente ▾", width=190, height=28, font=fuentes.pequena(size=11),
+                                fg_color=colores.NEUTRO, hover_color=colores.NEUTRO_HOVER)
+            btn.configure(command=lambda: self._alternar_detalle(r.docentes, cont, btn))
+            btn.pack(anchor="w", pady=(8, 0))
 
     def _alternar_detalle(self, detalle, cont, boton):
         if getattr(self, "_detalle_frame", None) and self._detalle_frame.winfo_exists():
@@ -311,7 +257,8 @@ class VentanaRevision(ctk.CTkToplevel):
         self._detalle_frame.pack(fill="x", pady=(6, 0))
         
         iconos = {"nuevo": "🆕", "actualiza": "🔄", "omitido": "⏭", "existente": "🗓"}
-        for d in detalle:
+        relevantes = [d for d in detalle if d.estado != "existente" or d.turnos_nuevos or d.turnos_quitar or d.avisos]
+        for d in relevantes[:150]:
             partes = [f"{iconos[d.estado]} {d.nombre}"]
             if d.cambios: partes.append(" · ".join(d.cambios))
             if d.turnos_nuevos: partes.append(f"+{len(d.turnos_nuevos)} turno(s)")
@@ -324,6 +271,8 @@ class VentanaRevision(ctk.CTkToplevel):
             lbl_det.pack(fill="x", pady=1)
             # Enlace dinámico para adaptabilidad de ancho en el detalle
             self._detalle_frame.bind("<Configure>", lambda e, l=lbl_det: l.configure(wraplength=e.width - 20))
+        if len(relevantes) > 150:
+            ctk.CTkLabel(self._detalle_frame, text=f"… y {len(relevantes) - 150} más.", font=fuentes.pequena(size=11), text_color=colores.TEXTO_TENUE).pack(anchor="w")
 
     def _seccion_avisos(self):
         card = self._tarjeta(f"⚠️  {len(self.resultado.omitidas)} fila(s) con algo que no pude leer", "No afectan al resto del archivo.")
@@ -340,8 +289,6 @@ class VentanaRevision(ctk.CTkToplevel):
 
     # ---------- acciones ----------
     def _cancelar(self):
-        if self.ventana_previa and self.ventana_previa.winfo_exists():
-            self.ventana_previa.destroy()
         self.destroy()
 
     def _aplicar(self):

@@ -188,27 +188,31 @@ class VentanaRevision(ctk.CTkToplevel):
 
     def _seccion_mapeo(self):
         imp = self.importacion
-        etiquetas = {"nombre": "Nombre", "area": "Área", "tipo": "Tipo", "dia": "Día", "entrada": "Entrada", "salida": "Salida", "horario": "Horario"}
-        card = self._tarjeta("🔎  Cómo entendí tus columnas", "Si algo no cuadra, cámbialo aquí manualmente.")
-        
+        # Agregamos "turno" al diccionario de etiquetas visuales
+        etiquetas = {
+            "nombre": "Nombre del Docente", "area": "Área", "tipo": "Tipo", "turno": "Turno", "dia": "Día", "entrada": "Entrada", "salida": "Salida", "horario": "Horario"
+        }
+        card = self._tarjeta("⚙️  Asignación de Columnas", "Verifique la correspondencia de los campos detectados.")
+
         fila = ctk.CTkFrame(card, fg_color="transparent")
         fila.pack(fill="x", padx=16, pady=(0, 14))
 
         opciones_col = ["— ninguna —"] + imp.columnas
-        for campo in ["nombre", "area", "tipo"] + ([] if imp.ancho else ["dia", "entrada", "salida", "horario"]):
+        # Incluimos "turno" en la lista de campos mapeables
+        for campo in ["nombre", "area", "tipo", "turno"] + ([] if imp.ancho else ["dia", "entrada", "salida", "horario"]):
             sub = ctk.CTkFrame(fila, fg_color="transparent")
             sub.pack(side="left", padx=(0, 14), pady=4)
             ctk.CTkLabel(sub, text=etiquetas[campo], font=fuentes.pequena(size=10), text_color=colores.TEXTO_TENUE).pack(anchor="w")
-            
+
             actual = imp.columnas[imp.mapeo[campo]] if campo in imp.mapeo else "— ninguna —"
-            cmb = ctk.CTkOptionMenu(sub, values=opciones_col, width=140, height=30, font=fuentes.pequena(size=11),
+            cmb = ctk.CTkOptionMenu(sub, values=opciones_col, width=130, height=30, font=fuentes.pequena(size=11),
                                     fg_color=colores.BG_ENTRADA, button_color=colores.ACENTO, button_hover_color=colores.ACENTO_HOVER,
                                     command=lambda val, c=campo: self._remapear(c, val))
             cmb.set(actual)
             cmb.pack(anchor="w")
             
         if imp.ancho:
-            ctk.CTkLabel(card, text=f"Detecté una columna por día: {imp.descripcion.split('(')[1][:-1]}.",
+            ctk.CTkLabel(card, text=f"Estructura detectada: Formato matricial por columnas ({imp.descripcion.split('(')[1][:-1]}).",
                         font=fuentes.pequena(size=11), text_color=colores.TEXTO_SECUNDARIO, anchor="w").pack(fill="x", padx=16, pady=(0, 14))
 
     def _remapear(self, campo, valor):
@@ -221,21 +225,43 @@ class VentanaRevision(ctk.CTkToplevel):
         self.refrescar()
 
     def _seccion_modo(self):
-        card = self._tarjeta("🔁  Si un docente ya tiene horario guardado y el archivo trae otro distinto")
+        card = self._tarjeta("🔄  Política de Sincronización de Horarios", "Seleccione el criterio operativo para los docentes que ya cuentan con horarios registrados:")
         cont = ctk.CTkFrame(card, fg_color="transparent")
         cont.pack(fill="x", padx=16, pady=(0, 14))
         
         self.var_modo = ctk.StringVar(value=self.importacion.modo)
-        for valor, texto in self.importacion.MODOS.items():
-            ctk.CTkRadioButton(cont, text=texto, variable=self.var_modo, value=valor, font=fuentes.pequena(size=12),
-                               text_color=colores.TEXTO_SECUNDARIO, fg_color=colores.ACENTO, command=self._cambiar_modo).pack(anchor="w", pady=3)
+        
+        # Opción 1: Segura / Aditiva
+        ctk.CTkRadioButton(
+            cont, 
+            text="No actualiza los datos existentes y solo agrega los nuevos.", 
+            variable=self.var_modo, 
+            value="agregar", 
+            font=fuentes.boton(size=12),
+            text_color=colores.TEXTO_PRIMARIO, 
+            fg_color=colores.ACENTO, 
+            command=self._cambiar_modo
+        ).pack(anchor="w", pady=(2, 6))
+
+        # Opción 2: Destructiva / Reemplazo (Resaltada con color de advertencia/peligro)
+        ctk.CTkRadioButton(
+            cont, 
+            text="⚠️ Sobrescribe por completo (remplaza los todos las datos guardados por los datos propuestos por el archivo).", 
+            variable=self.var_modo, 
+            value="reemplazar", 
+            font=fuentes.boton(size=12),
+            text_color=colores.ADVERTENCIA, 
+            fg_color=colores.ADVERTENCIA, 
+            hover_color=colores.ADVERTENCIA_HOVER,
+            command=self._cambiar_modo
+        ).pack(anchor="w", pady=(2, 2))
 
     def _cambiar_modo(self):
         self.importacion.modo = self.var_modo.get()
         self.refrescar()
 
     def _seccion_decisiones(self):
-        card = self._tarjeta("❓  Necesito que confirmes esto", "Elige la opción correcta en cada caso; el resto del archivo no se ve afectado.")
+        card = self._tarjeta("⚠️  Validación de Registros Ambiguos", "Se requiere su autorización para resolver las siguientes discrepancias detectadas:")
         
         for dec in self.resultado.decisiones:
             fila = ctk.CTkFrame(card, fg_color=colores.BG_SUPERFICIE, corner_radius=8)
@@ -243,7 +269,6 @@ class VentanaRevision(ctk.CTkToplevel):
             
             ctk.CTkLabel(fila, text=dec.titulo, font=fuentes.boton(size=12), text_color=colores.TEXTO_PRIMARIO, anchor="w").pack(fill="x", padx=12, pady=(10, 1))
             
-            # Label con ancho dinámico responsive utilizando enlace de eventos <Configure>
             lbl_detalle = ctk.CTkLabel(fila, text=dec.detalle, font=fuentes.pequena(size=11), text_color=colores.TEXTO_SECUNDARIO, anchor="w", justify="left")
             lbl_detalle.pack(fill="x", padx=12)
             fila.bind("<Configure>", lambda e, l=lbl_detalle: l.configure(wraplength=e.width - 24))
@@ -260,7 +285,7 @@ class VentanaRevision(ctk.CTkToplevel):
 
     def _seccion_resumen(self):
         r = self.resultado
-        card = self._tarjeta("📊  Esto va a pasar")
+        card = self._tarjeta("📊  Resumen de Impacto Operativo")
         cont = ctk.CTkFrame(card, fg_color="transparent")
         cont.pack(fill="x", padx=16, pady=(0, 14))
 
@@ -270,21 +295,14 @@ class VentanaRevision(ctk.CTkToplevel):
             ctk.CTkLabel(f, text=icono, font=fuentes.cuerpo(size=13), width=22).pack(side="left")
             ctk.CTkLabel(f, text=texto, font=fuentes.cuerpo(size=12), text_color=color, anchor="w").pack(side="left")
 
-        if r.nuevos: linea("🆕", f"{r.nuevos} docente(s) nuevo(s)")
-        if r.actualizados: linea("🔄", f"{r.actualizados} docente(s) con Área/Tipo actualizado")
-        if r.turnos_nuevos: linea("🗓", f"{r.turnos_nuevos} turno(s) nuevo(s)")
-        if r.turnos_quitados: linea("➖", f"{r.turnos_quitados} turno(s) se eliminarán (no aparecen en el archivo)", colores.PELIGRO)
-        if r.turnos_iguales: linea("✅", f"{r.turnos_iguales} turno(s) ya estaban registrados (sin cambio)", colores.TEXTO_SECUNDARIO)
-        if r.omitidos: linea("⏭", f"{r.omitidos} docente(s) nuevo(s) no se importarán (falta Área o Tipo)", colores.ADVERTENCIA)
+        if r.nuevos: linea("🆕", f"{r.nuevos} registro(s) de docente(s) nuevo(s)")
+        if r.actualizados: linea("🔄", f"{r.actualizados} docente(s) con actualización de Área o Tipo")
+        if r.turnos_nuevos: linea("🗓", f"{r.turnos_nuevos} nuevo(s) turno(s) por incorporar")
+        if r.turnos_quitados: linea("➖", f"{r.turnos_quitados} turno(s) programados para baja (ausentes en archivo)", colores.PELIGRO)
+        if r.turnos_iguales: linea("✅", f"{r.turnos_iguales} turno(s) sin modificaciones (coincidentes)")
+        if r.omitidos: linea("⏭", f"{r.omitidos} registro(s) omitidos por falta de información obligatoria", colores.ADVERTENCIA)
         if not any((r.nuevos, r.actualizados, r.turnos_nuevos, r.turnos_quitados, r.turnos_iguales, r.omitidos)):
-            linea("💤", "No encontré docentes ni turnos reconocibles todavía.", colores.TEXTO_SECUNDARIO)
-
-        detalle = [d for d in r.docentes if d.estado != "existente" or d.turnos_nuevos]
-        if detalle:
-            btn = ctk.CTkButton(cont, text="Ver detalle por docente ▾", fg_color="transparent", hover_color=colores.BG_ENTRADA,
-                                text_color=colores.ACENTO, font=fuentes.pequena(size=11), height=26, anchor="w",
-                                command=lambda: self._alternar_detalle(detalle, cont, btn))
-            btn.pack(fill="x", pady=(8, 0))
+            linea("💤", "No se detectaron cambios ni registros procesables en el archivo.", colores.TEXTO_SECUNDARIO)
 
     def _alternar_detalle(self, detalle, cont, boton):
         if getattr(self, "_detalle_frame", None) and self._detalle_frame.winfo_exists():

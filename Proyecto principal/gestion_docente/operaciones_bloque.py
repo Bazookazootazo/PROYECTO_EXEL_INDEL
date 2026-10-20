@@ -131,26 +131,34 @@ def revisar_turno(existentes, id_dia, entrada, salida):
             choque = choque or h
     return ("traslape", choque) if choque else ("nuevo", None)
 
-
 # ───────────────────────────── Planificadores (puros: no tocan la base) ─────────────────────────────
 
-def planificar_datos(profesores, area=None, tipo=None):
+# En operaciones_bloque.py
+
+def planificar_datos(profesores, area=None, tipo=None, turno=None):
     plan = Plan("datos")
-    if not area and not tipo:
-        plan.error = "Elige el Área o el Tipo nuevo (o ambos)."
+    if not area and not tipo and not turno:
+        plan.error = "Elige al menos un valor nuevo (Área, Tipo o Turno)."
         return plan
 
     cambios, sin_cambio = defaultdict(list), []
     for p in profesores:
-        nueva_area, nuevo_tipo = area or p["area"], tipo or p["tipo"]
-        if (nueva_area, nuevo_tipo) == (p["area"], p["tipo"]):
+        nueva_area = area or p["area"]
+        nuevo_tipo = tipo or p["tipo"]
+        nuevo_turno = turno or p.get("turno", "Matutino")
+        
+        if (nueva_area, nuevo_tipo, nuevo_turno) == (p["area"], p["tipo"], p.get("turno", "Matutino")):
             sin_cambio.append(_nombre(p))
             continue
+            
         if nueva_area != p["area"]:
             cambios[f"Área: {p['area']} → {nueva_area}"].append(_nombre(p))
         if nuevo_tipo != p["tipo"]:
             cambios[f"Tipo: {p['tipo']} → {nuevo_tipo}"].append(_nombre(p))
-        plan.payload.append(_entrada_payload(p, area=nueva_area, tipo=nuevo_tipo, actualizar=True))
+        if nuevo_turno != p.get("turno", "Matutino"):
+            cambios[f"Turno: {p.get('turno', 'Matutino')} → {nuevo_turno}"].append(_nombre(p))
+            
+        plan.payload.append(_entrada_payload(p, area=nueva_area, tipo=nuevo_tipo, turno=nuevo_turno, actualizar=True))
 
     for etiqueta, nombres in cambios.items():
         plan.lineas.append(Linea("🔄", f"{etiqueta}  ({len(nombres)})", nombres))
@@ -252,7 +260,6 @@ def planificar_eliminar(profesores, horarios):
     plan.cambios = len(profesores)
     plan.resumen = f"Se eliminarán {len(profesores)} docente(s) y {turnos} turno(s)."
     return plan
-
 
 # ───────────────────────────── Aplicar ─────────────────────────────
 
