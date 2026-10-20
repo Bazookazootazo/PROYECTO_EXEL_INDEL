@@ -468,7 +468,7 @@ class VentanaSubirArchivos(ctk.CTkToplevel):
 
         lbl_subtitulo = ctk.CTkLabel(
             master=title_box,
-            text="Depuracion de checadas de docentes y generacion de reportes de asistencia, favor de agregar el archivo de registro de checadas (CSV/Excel) para procesar.",
+            text="Depuracion de checadas de asistencia de docentes, favor de agregar el archivo de registro de checadas (CSV/Excel) para procesar.",
             font=fuentes.cuerpo(size=13),
             text_color=colores.TEXTO_SECUNDARIO,
         )
