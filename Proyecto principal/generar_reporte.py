@@ -11,9 +11,9 @@ from openpyxl.utils import get_column_letter
 from openpyxl.drawing.image import Image as OpenpyxlImage
 
 from utilerias.paleta_colores import colores, fuentes
+from utilerias.messagebox_variados import mostrar_advertencia, mostrar_error, mostrar_exito, mostrar_pregunta
 
-
-# Minutos de tolerancia en la ENTRADA (Contrato Colectivo de Trabajo)
+# Minutos de tolerancia
 TOLERANCIA_MIN = 10
 
 
@@ -29,14 +29,13 @@ class VentanaExcepcionesDialog(ctk.CTkToplevel):
         self.focus()
         self.grab_set()
 
-        self.excepciones = list(excepciones_actuales) # Lista de tuplas (docente_o_global, fecha_str, motivo)
+        self.excepciones = list(excepciones_actuales) 
         self.lista_docentes = ["(Global - Todos los docentes)"] + [d['nombre'] for d in lista_docentes]
 
-        # Obtener días hábiles entre las fechas seleccionadas
         self.dias_disponibles = []
         curr = fecha_inicio
         while curr <= fecha_fin:
-            if curr.weekday() < 5: # Excluir fines de semana
+            if curr.weekday() < 5: 
                 self.dias_disponibles.append(curr.strftime('%d/%m/%Y'))
             curr += timedelta(days=1)
 
@@ -52,14 +51,12 @@ class VentanaExcepcionesDialog(ctk.CTkToplevel):
         form_frame = ctk.CTkFrame(master=main_frame, fg_color=colores.BG_PANEL_ALT, corner_radius=10)
         form_frame.pack(fill="x", padx=20, pady=10, ipady=10)
 
-        # Docente
         lbl_doc = ctk.CTkLabel(master=form_frame, text="Docente:", font=fuentes.seccion(size=12), text_color=colores.TEXTO_PRIMARIO)
         lbl_doc.grid(row=0, column=0, sticky="w", padx=15, pady=(10, 2))
         self.cb_docente = ctk.CTkComboBox(master=form_frame, values=self.lista_docentes, width=250, height=32)
         self.cb_docente.grid(row=1, column=0, sticky="ew", padx=15, pady=(0, 10))
         self.cb_docente.set(self.lista_docentes[0])
 
-        # Fecha
         lbl_fec = ctk.CTkLabel(master=form_frame, text="Fecha (Días hábiles del periodo):", font=fuentes.seccion(size=12), text_color=colores.TEXTO_PRIMARIO)
         lbl_fec.grid(row=0, column=1, sticky="w", padx=15, pady=(10, 2))
         
@@ -71,7 +68,6 @@ class VentanaExcepcionesDialog(ctk.CTkToplevel):
             self.cb_fecha.set("No hay días hábiles")
         self.cb_fecha.grid(row=1, column=1, sticky="ew", padx=15, pady=(0, 10))
 
-        # Motivo / Circunstancia
         lbl_mot = ctk.CTkLabel(master=form_frame, text="Circunstancia / Motivo (ej. Descanso, Permiso):", font=fuentes.seccion(size=12), text_color=colores.TEXTO_PRIMARIO)
         lbl_mot.grid(row=2, column=0, columnspan=2, sticky="w", padx=15, pady=(5, 2))
         
@@ -83,7 +79,6 @@ class VentanaExcepcionesDialog(ctk.CTkToplevel):
         btn_agregar = ctk.CTkButton(master=form_frame, text="➕ Agregar Excepción", fg_color=colores.EXITO, hover_color=colores.EXITO_HOVER, command=self.agregar_excepcion, height=32)
         btn_agregar.grid(row=4, column=0, columnspan=2, padx=15, pady=10)
 
-        # Lista de excepciones agregadas
         lbl_lista = ctk.CTkLabel(master=main_frame, text="Excepciones Registradas:", font=fuentes.seccion(size=12), text_color=colores.TEXTO_PRIMARIO)
         lbl_lista.pack(anchor="w", padx=20, pady=(10, 2))
 
@@ -100,13 +95,12 @@ class VentanaExcepcionesDialog(ctk.CTkToplevel):
         motivo = self.cb_motivo.get().strip()
 
         if not fecha or fecha == "No hay días hábiles":
-            messagebox.showwarning("Advertencia", "No hay fechas disponibles para seleccionar.", parent=self)
+            mostrar_advertencia("Advertencia", "No hay fechas disponibles para seleccionar.", parent=self)
             return
         if not motivo:
-            messagebox.showwarning("Advertencia", "Escribe o selecciona un motivo.", parent=self)
+            mostrar_advertencia("Advertencia", "Escribe o selecciona un motivo.", parent=self)
             return
 
-        # Evitar duplicados exactos
         item = (docente, fecha, motivo)
         if item not in self.excepciones:
             self.excepciones.append(item)
@@ -127,7 +121,6 @@ class VentanaExcepcionesDialog(ctk.CTkToplevel):
         self.txt_lista.configure(state="disabled")
 
     def obtener_resultado(self):
-        # Retorna el texto formato compatible con el parser
         texto_lineas = []
         for doc, fec, mot in self.excepciones:
             if doc == "(Global - Todos los docentes)":
@@ -183,7 +176,7 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
             cursor.close()
             conn.close()
         except Exception as e:
-            messagebox.showerror("Error BD", f"No se pudieron cargar las áreas:\n{e}", parent=self)
+            mostrar_error("Error BD", f"No se pudieron cargar las áreas:\n{e}", parent=self)
 
     @staticmethod
     def parsear_excepciones(texto_excepciones):
@@ -229,13 +222,12 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
             fecha_fin = datetime.strptime(f_fin_str, '%d/%m/%Y').date()
             
             if fecha_inicio > fecha_fin:
-                messagebox.showerror("Error", "La fecha de inicio no puede ser posterior a la fecha fin.", parent=self)
+                mostrar_error("Error", "La fecha de inicio no puede ser posterior a la fecha fin.", parent=self)
                 return
         except ValueError:
-            messagebox.showerror("Error de Formato", "Ingresa fechas válidas (DD/MM/AAAA) antes de asignar días libres.", parent=self)
+            mostrar_error("Error de Formato", "Ingresa fechas válidas (DD/MM/AAAA) antes de asignar días libres.", parent=self)
             return
 
-        # Obtener docentes del área seleccionada
         try:
             conn = self.obtener_conexion_bd()
             cursor = conn.cursor(dictionary=True)
@@ -246,7 +238,6 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
         except Exception:
             docentes = []
 
-        # Convertir texto actual en lista para el diálogo si ya existía
         excepciones_actuales = []
         for linea in self.excepciones_texto_guardado.strip().split('\n'):
             if ':' in linea:
@@ -271,7 +262,7 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
     def generar_excel_quincenal(self):
         area_seleccionada = self.cb_area.get().strip()
         if not area_seleccionada or area_seleccionada == "Sin áreas registradas":
-            messagebox.showwarning("Advertencia", "Selecciona un área válida.", parent=self)
+            mostrar_advertencia("Advertencia", "Selecciona un área válida.", parent=self)
             return
 
         try:
@@ -282,10 +273,10 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
             fecha_fin = datetime.strptime(f_fin_str, '%d/%m/%Y').date()
             
             if fecha_inicio > fecha_fin:
-                messagebox.showerror("Error", "La fecha de inicio no puede ser posterior a la fecha fin.", parent=self)
+                mostrar_error("Error", "La fecha de inicio no puede ser posterior a la fecha fin.", parent=self)
                 return
         except ValueError:
-            messagebox.showerror("Error de Formato", "Las fechas deben tener el formato válido DD/MM/AAAA (ej. 01/12/2025).", parent=self)
+            mostrar_error("Error de Formato", "Las fechas deben tener el formato válido DD/MM/AAAA (ej. 01/12/2025).", parent=self)
             return
 
         excepciones_globales, excepciones_docente = self.parsear_excepciones(self.excepciones_texto_guardado)
@@ -320,7 +311,7 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
             docentes = cursor.fetchall()
 
             if not docentes:
-                messagebox.showwarning("Sin Datos", f"No hay docentes registrados en el área: {area_seleccionada}", parent=self)
+                mostrar_advertencia("Sin Datos", f"No hay docentes registrados en el área: {area_seleccionada}", parent=self)
                 return
 
             dias_quincena = []
@@ -378,8 +369,8 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
                 if os.path.exists(ruta_img):
                     try:
                         img_utn = OpenpyxlImage(ruta_img)
-                        img_utn.width = 65
-                        img_utn.height = 65
+                        img_utn.width = 75
+                        img_utn.height = 70
                         ws.add_image(img_utn, "A1")
                         break
                     except Exception:
@@ -390,8 +381,8 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
                 if os.path.exists(ruta_img):
                     try:
                         img_iso = OpenpyxlImage(ruta_img)
-                        img_iso.width = 65
-                        img_iso.height = 65
+                        img_iso.width = 85
+                        img_iso.height = 75
                         ws.add_image(img_iso, f"{col_total_letter}1")
                         break
                     except Exception:
@@ -609,12 +600,12 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
 
             self.lbl_estado_texto.configure(text="Reporte generado exitosamente.")
             self.lbl_estado_dot.configure(text_color=colores.ESTADO_EXITO)
-            messagebox.showinfo("Éxito", f"El reporte ha sido generado correctamente en:\n{ruta_guardado}", parent=self)
+            mostrar_exito("Éxito", f"El reporte ha sido generado correctamente en:\n{ruta_guardado}")
 
         except Exception as err:
             self.lbl_estado_texto.configure(text="Error al generar reporte")
             self.lbl_estado_dot.configure(text_color=colores.ESTADO_ERROR)
-            messagebox.showerror("Error", f"Fallo durante la generación del reporte:\n{err}", parent=self)
+            mostrar_error("Error", f"Fallo durante la generación del reporte:\n{err}")
 
     def regresar_al_menu(self):
         if self.parent:
