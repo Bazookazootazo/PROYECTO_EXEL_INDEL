@@ -5,8 +5,8 @@ from gestion_docente.importador import Importacion
 from utilerias.messagebox_variados import mostrar_error, mostrar_exito, mostrar_pregunta
 from utilerias.paleta_colores import colores, fuentes
 
-TIPOS_ARCHIVO = [("Excel y CSV", "*.xlsx *.xls *.csv"), ("Todos los archivos", "*.*")]
-NINGUNA = "— ninguna —"
+TIPOS_ARCHIVO = [("Excel y CSV", "*.xlsx *.xls *.csv")]
+NINGUNA = "ninguna"
 CAMPOS_UI = {"nombre": "Nombre del docente (obligatorio)", "area": "Área", "tipo": "Tipo", "turno": "Turno",
              "dia": "Día", "entrada": "Entrada", "salida": "Salida", "horario": "Horario (07:00-12:00)"}
 
