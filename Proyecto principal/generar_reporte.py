@@ -95,10 +95,10 @@ class VentanaExcepcionesDialog(ctk.CTkToplevel):
         motivo = self.cb_motivo.get().strip()
 
         if not fecha or fecha == "No hay días hábiles":
-            mostrar_advertencia("Advertencia", "No hay fechas disponibles para seleccionar.", parent=self)
+            mostrar_advertencia("Advertencia", "No hay fechas disponibles para seleccionar.")
             return
         if not motivo:
-            mostrar_advertencia("Advertencia", "Escribe o selecciona un motivo.", parent=self)
+            mostrar_advertencia("Advertencia", "Escribe o selecciona un motivo.")
             return
 
         item = (docente, fecha, motivo)
@@ -176,7 +176,7 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
             cursor.close()
             conn.close()
         except Exception as e:
-            mostrar_error("Error BD", f"No se pudieron cargar las áreas:\n{e}", parent=self)
+            mostrar_error("Error BD", f"No se pudieron cargar las áreas:\n{e}")
 
     @staticmethod
     def parsear_excepciones(texto_excepciones):
@@ -222,10 +222,10 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
             fecha_fin = datetime.strptime(f_fin_str, '%d/%m/%Y').date()
             
             if fecha_inicio > fecha_fin:
-                mostrar_error("Error", "La fecha de inicio no puede ser posterior a la fecha fin.", parent=self)
+                mostrar_error("Error", "La fecha de inicio no puede ser posterior a la fecha fin.")
                 return
         except ValueError:
-            mostrar_error("Error de Formato", "Ingresa fechas válidas (DD/MM/AAAA) antes de asignar días libres.", parent=self)
+            mostrar_error("Error de Formato", "Ingresa fechas válidas (DD/MM/AAAA) antes de asignar días libres.")
             return
 
         try:
@@ -262,7 +262,7 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
     def generar_excel_quincenal(self):
         area_seleccionada = self.cb_area.get().strip()
         if not area_seleccionada or area_seleccionada == "Sin áreas registradas":
-            mostrar_advertencia("Advertencia", "Selecciona un área válida.", parent=self)
+            mostrar_advertencia("Advertencia", "Selecciona un área válida.")
             return
 
         try:
@@ -273,10 +273,10 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
             fecha_fin = datetime.strptime(f_fin_str, '%d/%m/%Y').date()
             
             if fecha_inicio > fecha_fin:
-                mostrar_error("Error", "La fecha de inicio no puede ser posterior a la fecha fin.", parent=self)
+                mostrar_error("Error", "La fecha de inicio no puede ser posterior a la fecha fin.")
                 return
         except ValueError:
-            mostrar_error("Error de Formato", "Las fechas deben tener el formato válido DD/MM/AAAA (ej. 01/12/2025).", parent=self)
+            mostrar_error("Error de Formato", "Las fechas deben tener el formato válido DD/MM/AAAA (ej. 01/12/2025).")
             return
 
         excepciones_globales, excepciones_docente = self.parsear_excepciones(self.excepciones_texto_guardado)
@@ -311,7 +311,7 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
             docentes = cursor.fetchall()
 
             if not docentes:
-                mostrar_advertencia("Sin Datos", f"No hay docentes registrados en el área: {area_seleccionada}", parent=self)
+                mostrar_advertencia("Sin Datos", f"No hay docentes registrados en el área: {area_seleccionada}")
                 return
 
             dias_quincena = []
