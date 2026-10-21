@@ -1,17 +1,3 @@
-"""
-Motor de importación de docentes y horarios.
-
-La idea: el usuario entrega su archivo tal como lo tiene y el programa se adapta.
-  1. Lee Excel/CSV (cualquier separador/codificación, títulos sobre el encabezado,
-     varias hojas) y detecta qué columna es cada cosa, por su título o, si el
-     título no ayuda, por su contenido.
-  2. Entiende horarios en formato "una fila por turno" o "una columna por día",
-     con horas como 7, 7:00, 07:00, 7am, 0700..., y días como "Lun", "Lunes a Viernes".
-  3. Traduce Áreas, Tipos y Turnos al catálogo oficial (alias y errores de dedo).
-  4. Calcula qué cambiaría (nuevos, actualizaciones, turnos) SIN tocar la base de
-     datos; lo dudoso se devuelve como "decisiones" para que el usuario confirme.
-  5. Solo cuando el usuario acepta, aplica todo en una transacción.
-"""
 import csv
 import io
 import os

@@ -1,26 +1,20 @@
-"""
-Diálogo de acciones en bloque sobre los docentes seleccionados.
-Diseño compacto, intuitivo y sin scrollbars anidados.
-"""
 import customtkinter as ctk
-
 from gestion_docente import operaciones_bloque as ops
 from gestion_docente.catalogos import AREAS, DIAS, NOMBRE_DIA, TIPOS, TURNOS
 from utilerias.campo_hora import aplicar_formato_hora
 from utilerias.messagebox_variados import mostrar_error, mostrar_exito, mostrar_pregunta
 from utilerias.paleta_colores import colores, fuentes
 
-SIN_CAMBIO = "— sin cambio —"
+SIN_CAMBIO = "sin cambio"
 
 ACCIONES = {
-    "datos": dict(icono="✏️", titulo="Actualización Masiva de Área, Tipo y Turno", boton="Aplicar cambios", destructiva=False,
+    "datos": dict(titulo="Actualización masiva de datos generales", boton="Aplicar cambios", destructiva=False,
                   color=colores.ACENTO, hover=colores.ACENTO_HOVER),
-    "asignar": dict(icono="🗓", titulo="Asignación de Turno Común", boton="Asignar turno", destructiva=False,
+    "asignar": dict(titulo="Asignación masiva de horio(s)", boton="Asignar horio(s)", destructiva=False,
                     color=colores.EXITO, hover=colores.EXITO_HOVER),
-    "quitar": dict(icono="✂️", titulo="Retirar o Limpiar Turnos", boton="Aplicar cambios", destructiva=True,
+    "quitar": dict(titulo="Quitar masivamente horarios", boton="Aplicar cambios", destructiva=True,
                    color=colores.ADVERTENCIA, hover=colores.ADVERTENCIA_HOVER),
 }
-
 
 class VentanaBloque(ctk.CTkToplevel):
     def __init__(self, parent, accion, profesores, horarios, on_success_callback=None):
@@ -30,7 +24,6 @@ class VentanaBloque(ctk.CTkToplevel):
         self.on_success_callback = on_success_callback
         self.plan = None
 
-        # Flujo directo para eliminación masiva (mensaje rápido sin ventana recargada)
         if accion == "eliminar":
             self.withdraw()
             plan = ops.planificar_eliminar(self.profesores, self.horarios)
@@ -54,8 +47,8 @@ class VentanaBloque(ctk.CTkToplevel):
         self.cfg = ACCIONES[accion]
 
         self.title(self.cfg["titulo"])
-        self.geometry("600x520")
-        self.minsize(560, 480)
+        self.geometry("480x420")
+        self.minsize(480, 420)
         self.resizable(True, True)
         self.configure(fg_color=colores.BG_VENTANA)
         
@@ -66,25 +59,22 @@ class VentanaBloque(ctk.CTkToplevel):
         self.grid_rowconfigure(0, weight=1)
 
         self.bind("<Escape>", lambda e: self.destroy())
-        self._centrar_ventana(parent, 600, 520)
+        self._centrar_ventana(parent, 480, 420)
 
-        # Panel contenedor principal compacto y elegante
         main_frame = ctk.CTkFrame(self, corner_radius=14, fg_color=colores.BG_PANEL, border_width=1, border_color=colores.BORDE)
         main_frame.grid(row=0, column=0, sticky="nsew", padx=12, pady=12)
         main_frame.grid_columnconfigure(0, weight=1)
         main_frame.grid_rowconfigure(1, weight=1)
 
-        # Encabezado visual compacto
         encabezado = ctk.CTkFrame(main_frame, fg_color="transparent")
         encabezado.pack(fill="x", padx=16, pady=(14, 8))
         
         ctk.CTkLabel(
-            encabezado, text=f"{self.cfg['icono']}  {self.cfg['titulo']}",
+            encabezado, text=self.cfg['titulo'],
             font=fuentes.seccion(size=16), text_color=colores.TEXTO_PRIMARIO,
-            anchor="w"
+            anchor="center"
         ).pack(fill="x")
 
-        # Formulario principal con scroll unificado
         self.form_frame = ctk.CTkScrollableFrame(main_frame, fg_color="transparent")
         self.form_frame.pack(fill="both", expand=True, padx=16, pady=(0, 8))
         self.form_frame.grid_columnconfigure(0, weight=1)
@@ -94,7 +84,6 @@ class VentanaBloque(ctk.CTkToplevel):
          
         self._vista_previa()
 
-        # Pie de página / Botones alineados limpiamente
         pie = ctk.CTkFrame(main_frame, fg_color="transparent")
         pie.pack(fill="x", padx=16, pady=(0, 14))
         pie.grid_columnconfigure(0, weight=1)
@@ -156,13 +145,11 @@ class VentanaBloque(ctk.CTkToplevel):
                                  button_hover_color=colores.ACENTO_HOVER, command=self.recalcular)
 
     def _vista_previa(self):
-        card = self._tarjeta("📋  Vista Previa de Impacto Operativo")
-        # Frame limpio sin scroll interno anidado
+        card = self._tarjeta("Vista Previa de Impacto Operativo")
         self.vista = ctk.CTkFrame(card, fg_color="transparent")
         self.vista.pack(fill="x", padx=12, pady=(0, 10))
         self.vista.grid_columnconfigure(0, weight=1)
 
-    # ───────────── Parámetros dinámicos por acción ─────────────
     def _params_datos(self):
         card = self._tarjeta("Configuración de Nuevos Valores")
         fila = ctk.CTkFrame(card, fg_color="transparent")
@@ -196,7 +183,7 @@ class VentanaBloque(ctk.CTkToplevel):
             var = ctk.BooleanVar(value=False)
             ctk.CTkCheckBox(dias_frame, text=nombre[:3], variable=var, command=self.recalcular, checkbox_width=16,
                             checkbox_height=16, fg_color=colores.ACENTO, hover_color=colores.ACENTO_HOVER,
-                            border_color=colores.BORDE_CLARO, font=fuentes.cuerpo(size=11)).pack(side="left", padx=(0, 8), pady=2)
+                            border_color=colores.BORDE_CLARO, font=fuentes.cuerpo(size=11), width=65).pack(side="left", padx=(0, 6), pady=2)
             self.var_dias[id_dia] = var
 
         horas_frame = ctk.CTkFrame(card, fg_color="transparent")
@@ -215,7 +202,7 @@ class VentanaBloque(ctk.CTkToplevel):
             setattr(self, atributo, entrada)
 
         self.var_traslape = ctk.BooleanVar(value=False)
-        ctk.CTkCheckBox(card, text="Permitir asignación con traslape de horas coincidentes", variable=self.var_traslape,
+        ctk.CTkCheckBox(card, text="¿Permitir asignar horario a docentes que ya cuenten con uno para los días seleccionados?", variable=self.var_traslape,
                         command=self.recalcular, checkbox_width=16, checkbox_height=16, fg_color=colores.ACENTO,
                         hover_color=colores.ACENTO_HOVER, border_color=colores.BORDE_CLARO,
                         font=fuentes.pequena(size=10), text_color=colores.TEXTO_SECUNDARIO).pack(anchor="w", padx=12, pady=(0, 10))
@@ -226,7 +213,7 @@ class VentanaBloque(ctk.CTkToplevel):
         self.var_turnos = {}
         
         if not turnos:
-            ctk.CTkLabel(card, text="📭  No se encontraron turnos activos.", font=fuentes.cuerpo(size=11),
+            ctk.CTkLabel(card, text="No se encontraron turnos activos.", font=fuentes.cuerpo(size=11),
                          text_color=colores.TEXTO_TENUE).pack(padx=12, pady=(0, 10))
             return
             
@@ -283,7 +270,7 @@ class VentanaBloque(ctk.CTkToplevel):
             w.destroy()
 
         if plan.error:
-            ctk.CTkLabel(self.vista, text=f"ℹ️  {plan.error}", font=fuentes.cuerpo(size=11), text_color=colores.ADVERTENCIA,
+            ctk.CTkLabel(self.vista, text=plan.error, font=fuentes.cuerpo(size=11), text_color=colores.ADVERTENCIA,
                          anchor="w", justify="left").pack(fill="x", pady=(0, 2))
         else:
             color = {"ok": colores.TEXTO_PRIMARIO, "info": colores.TEXTO_SECUNDARIO, "aviso": colores.ADVERTENCIA}
@@ -291,7 +278,7 @@ class VentanaBloque(ctk.CTkToplevel):
                 bloque = ctk.CTkFrame(self.vista, fg_color="transparent")
                 bloque.pack(fill="x", pady=(0, 4))
                 
-                lbl_ln = ctk.CTkLabel(bloque, text=f"{ln.icono}  {ln.texto}",
+                lbl_ln = ctk.CTkLabel(bloque, text=ln.texto,
                                       font=fuentes.cuerpo(size=11) if ln.nivel == "info" else fuentes.boton(size=11), 
                                       text_color=color[ln.nivel], anchor="w", justify="left")
                 lbl_ln.pack(fill="x")

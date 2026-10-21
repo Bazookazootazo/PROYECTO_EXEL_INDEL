@@ -56,12 +56,9 @@ class FormularioHorarioWidget(ctk.CTkFrame):
             fg_color=colores.NEUTRO, hover_color=colores.NEUTRO_HOVER
         )
 
-# ─────────────────────────────────────────────────────────────
-# VENTANA PRINCIPAL DE GESTIÓN DOCENTE
-# ─────────────────────────────────────────────────────────────
 class VentanaGestionDocentes(ctk.CTkToplevel):
     DIAS_MAPPING = {"Lunes": 1, "Martes": 2, "Miércoles": 3, "Jueves": 4, "Viernes": 5}
-    MAX_POOL = 50  # Capacidad máxima fija para soportar hasta 50 elementos sin recrear widgets
+    MAX_POOL = 50
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -80,9 +77,6 @@ class VentanaGestionDocentes(ctk.CTkToplevel):
         self._construir_panel_derecho()
         self.cargar_lista_profesores()
 
-    # ─────────────────────────────────────────────────────────
-    # CONFIGURACIÓN Y CIERRE SEGURO DE LA VENTANA
-    # ─────────────────────────────────────────────────────────
     def _configurar_ventana(self):
         self.title("Gestión Docente y Horarios")
         self.geometry("1150x720")
@@ -106,9 +100,6 @@ class VentanaGestionDocentes(ctk.CTkToplevel):
             self.parent.deiconify()
         self.cerrar_ventana()
 
-    # ─────────────────────────────────────────────────────────
-    # CONSTRUCCIÓN DEL PANEL IZQUIERDO
-    # ─────────────────────────────────────────────────────────
     def _construir_panel_izquierdo(self):
         panel = ctk.CTkFrame(self, corner_radius=16, fg_color=colores.BG_PANEL, border_width=1, border_color=colores.BORDE)
         panel.grid(row=0, column=0, sticky="nsew", padx=(15, 8), pady=15)
@@ -195,7 +186,7 @@ class VentanaGestionDocentes(ctk.CTkToplevel):
         self.btn_next.grid(row=0, column=2, sticky="e")
 
     def _crear_pool_tarjetas(self):
-        """Crea un pool estático de 50 tarjetas para evitar sobrecarga de memoria y mejorar rendimiento."""
+        """Crea un pool estático de 50 tarjetas con enfoque obligatorio al hacer clic en Editar/Eliminar."""
         for i in range(self.MAX_POOL):
             card = ctk.CTkFrame(self.container_profesores, fg_color=colores.COLOR_TARJETA, corner_radius=8, border_width=1, border_color=colores.COLOR_TARJETA_BORDE, cursor="hand2", height=42)
             card.grid_propagate(False)
@@ -240,183 +231,53 @@ class VentanaGestionDocentes(ctk.CTkToplevel):
                 "chk": chk, "var_chk": var_chk
             })
 
-    def _construir_barra_seleccion(self, panel):
-        fila = ctk.CTkFrame(panel, fg_color="transparent")
-        fila.grid(row=3, column=0, sticky="ew", padx=15, pady=(0, 4))
-        fila.grid_columnconfigure(0, weight=1)
-
-        self.var_todos = ctk.BooleanVar(value=False)
-        self.chk_todos = ctk.CTkCheckBox(
-            fila, text="Seleccionar todos los resultados", variable=self.var_todos, command=self.alternar_todos,
-            checkbox_width=18, checkbox_height=18, corner_radius=4, fg_color=colores.ACENTO, hover_color=colores.ACENTO_HOVER,
-            border_color=colores.BORDE_CLARO, font=fuentes.pequena(size=11), text_color=colores.TEXTO_SECUNDARIO,
-        )
-        self.chk_todos.grid(row=0, column=0, sticky="w")
-
-        self.barra_acciones = ctk.CTkFrame(panel, corner_radius=10, fg_color=colores.BG_PANEL_ALT, border_width=1, border_color=colores.BORDE_CLARO)
-        self.barra_acciones.grid(row=4, column=0, sticky="ew", padx=15, pady=(0, 6))
-        
-        acciones = (
-                    ("Datos", "datos", colores.ACENTO, colores.ACENTO_HOVER),
-                    ("Agregar horario(s)", "asignar", colores.EXITO, colores.EXITO_HOVER),
-                    ("Quitar horario(s)", "quitar", colores.ADVERTENCIA, colores.ADVERTENCIA_HOVER),
-                    ("Eliminar", "eliminar", colores.PELIGRO, colores.PELIGRO_HOVER)
-        )
-        
-        for col, (texto, accion, color, hover) in enumerate(acciones):
-            self.barra_acciones.grid_columnconfigure(col, weight=1, uniform="acciones")
-            ctk.CTkButton(
-                self.barra_acciones, text=texto, width=1, height=30, corner_radius=7, font=fuentes.boton(size=11),
-                fg_color=color, hover_color=hover, command=lambda a=accion: self.abrir_accion_bloque(a),
-            ).grid(row=0, column=col, sticky="ew", padx=3, pady=6)
-        self.barra_acciones.grid_remove()
-
-    # ─────────────────────────────────────────────────────────
-    # CONSTRUCCIÓN DEL PANEL DERECHO
-    # ─────────────────────────────────────────────────────────
-    def _construir_panel_derecho(self):
-        panel = ctk.CTkFrame(self, corner_radius=16, fg_color=colores.BG_PANEL, border_width=1, border_color=colores.BORDE)
-        panel.grid(row=0, column=1, sticky="nsew", padx=(7, 15), pady=15)
-        panel.grid_columnconfigure(0, weight=1)
-        panel.grid_rowconfigure(3, weight=1)
-
-        encabezado = ctk.CTkFrame(panel, fg_color="transparent", height=45)
-        encabezado.grid(row=0, column=0, sticky="ew", padx=18, pady=(14, 8))
-        encabezado.grid_propagate(False)
-
-        self.lbl_prof_seleccionado = ctk.CTkLabel(encabezado, text="Horario Semanal", font=fuentes.seccion(size=17), text_color=colores.TEXTO_PRIMARIO)
-        self.lbl_prof_seleccionado.place(relx=0.5, rely=0.5, anchor="center")
-
-        btn_volver_menu = ctk.CTkButton(
-            encabezado, text="Volver al menú", width=120, height=32, corner_radius=8,
-            font=fuentes.boton(size=12), fg_color=colores.NEUTRO,
-            hover_color=colores.NEUTRO_HOVER, command=self.regresar_al_menu
-        )
-        btn_volver_menu.place(relx=1.0, rely=0.5, anchor="e")
-        
-        self.form_horario = FormularioHorarioWidget(
-            panel, 
-            dias_mapping=self.DIAS_MAPPING, 
-            on_guardar=self.guardar_o_actualizar_horario
-        )
-        self.form_horario.grid(row=1, column=0, sticky="ew", padx=15, pady=(4, 12))
-
-        self.cmb_dia = self.form_horario.cmb_dia
-        self.ent_entrada = self.form_horario.ent_entrada
-        self.ent_salida = self.form_horario.ent_salida
-        self.btn_accion_horario = self.form_horario.btn_accion_horario
-        self.btn_cancelar_edicion = self.form_horario.btn_cancelar_edicion
-        self.btn_cancelar_edicion.configure(command=self.cancelar_edicion_horario)
-
-        self.scroll_horarios = ctk.CTkScrollableFrame(panel, fg_color="transparent")
-        self.scroll_horarios.grid(row=3, column=0, sticky="nsew", padx=10, pady=(0, 15))
-
-    # ─────────────────────────────────────────────────────────
-    # CARGA, FILTRADO Y PAGINACIÓN DINÁMICA
-    # ─────────────────────────────────────────────────────────
-    def cargar_lista_profesores(self):
-        try:
-            self.profesores_cache = db.obtener_profesores()
-        except Exception as e:
-            mostrar_error("Error de Conexión", f"No se pudo conectar a la base de datos:\n{e}", master=self)
-            return
-
-        self.seleccion &= {p['id_profesor'] for p in self.profesores_cache}
-        if self.profesor_seleccionado:
-            actual = next((p for p in self.profesores_cache if p['id_profesor'] == self.profesor_seleccionado['id_profesor']), None)
-            self.profesor_seleccionado = actual
-            self.lbl_prof_seleccionado.configure(text=f"Horario: {actual['nombre'].title()}" if actual else "Horario semanal")
-            if not actual:
-                self.cargar_horarios_profesor()
-
-        self._aplicar_filtro()
-        self.pagina_actual = min(self.pagina_actual, self.total_paginas())
-        self.renderizar_pagina()
-
-    def _aplicar_filtro(self):
-        query = self.var_busqueda.get().strip().lower()
-        self.profesores_filtrados = [p for p in self.profesores_cache if query in p['nombre'].lower() or query in p['area'].lower()] if query else self.profesores_cache.copy()
-
-    def filtrar_profesores(self, *args):
-        self._aplicar_filtro()
-        self.pagina_actual = 1
-        self.renderizar_pagina()
-
-    def cambiar_limite_paginacion(self, valor):
-        self.elementos_por_pagina = int(valor)
-        self.pagina_actual = 1
-        self.renderizar_pagina()
-
-    def total_paginas(self):
-        return math.ceil(len(self.profesores_filtrados) / self.elementos_por_pagina) or 1
-
-    def renderizar_pagina(self):
-        inicio = (self.pagina_actual - 1) * self.elementos_por_pagina
-        pagina_items = self.profesores_filtrados[inicio:inicio + self.elementos_por_pagina]
-
-        for i in range(self.MAX_POOL):
-            item = self.pool_tarjetas[i]
-            card = item["frame"]
-            lbl_nombre = item["lbl_nombre"]
-            lbl_area = item["lbl_area"]
-
-            if i < len(pagina_items):
-                prof = pagina_items[i]
-                card.profesor_asociado = prof
-                
-                estilo_tarjeta, color_area = self._estilo_tarjeta(prof)
-                lbl_nombre.configure(text=f"{prof['nombre'].title()}")
-                lbl_turno = prof.get('turno', 'Matutino')
-                lbl_area.configure(text=f"{prof['area'].title()}  •  {lbl_turno}")
-                card.configure(**estilo_tarjeta, cursor="hand2")
-                lbl_area.configure(text_color=color_area)
-
-                item["var_chk"].set(prof['id_profesor'] in self.seleccion)
-                item["chk"].configure(command=lambda i=prof['id_profesor'], v=item["var_chk"]: self.alternar_seleccion(i, v.get()))
-                item["chk"].grid()
-
-                item["btn_edit"].configure(command=lambda p=prof: self.abrir_ventana_edicion(p))
-                item["btn_del"].configure(command=lambda p=prof: self.eliminar_docente(p))
-
-                card.grid(row=i, column=0, sticky="ew", pady=1, padx=2)
-                item["btn_frame"].grid()
-            else:
-                card.profesor_asociado = None
-                lbl_nombre.configure(text="")
-                lbl_area.configure(text="")
-                item["btn_frame"].grid_remove()
-                item["chk"].grid_remove()
-                card.grid_remove()
-
-        total_pags = self.total_paginas()
-        self.lbl_paginacion.configure(text=f"Pág {self.pagina_actual} / {total_pags}")
-
-        self.btn_prev.configure(state="normal" if self.pagina_actual > 1 else "disabled")
-        self.btn_next.configure(state="normal" if self.pagina_actual < total_pags else "disabled")
-
-        self.container_profesores.update_idletasks()
-        self._actualizar_barra_seleccion()
-
-    def pagina_anterior(self):
-        if self.pagina_actual > 1:
-            self.pagina_actual -= 1
-            self.renderizar_pagina()
-
-    def pagina_siguiente(self):
-        if self.pagina_actual < self.total_paginas():
-            self.pagina_actual += 1
-            self.renderizar_pagina()
-
-    # ─────────────────────────────────────────────────────────
-    # CRUD Y OPERACIONES CON PROTECCIÓN DE CAMBIOS EN EDICIÓN
-    # ─────────────────────────────────────────────────────────
     def abrir_ventana_registro(self):
+        if self.id_horario_editando is not None:
+            if not mostrar_pregunta("Edición Pendiente", "Tiene un horario en proceso de edición sin guardar. ¿Desea descartar los cambios y registrar un nuevo docente?", master=self):
+                return
+            self.cancelar_edicion_horario()
         VentanaCrudProfesor(self, on_success_callback=self.cargar_lista_profesores)
 
+    def cargar_archivo_masivo(self):
+        if self.id_horario_editando is not None:
+            if not mostrar_pregunta("Edición Pendiente", "Tiene un horario en proceso de edición sin guardar. ¿Desea descartar los cambios e importar datos?", master=self):
+                return
+            self.cancelar_edicion_horario()
+        VentanaImportar(self, on_success_callback=self.cargar_lista_profesores)
+
     def abrir_ventana_edicion(self, profesor):
+        if self.profesor_seleccionado and self.profesor_seleccionado['id_profesor'] != profesor['id_profesor']:
+            if not mostrar_pregunta(
+                "Cambio de Docente", 
+                f"Actualmente está viendo los horarios de '{self.profesor_seleccionado['nombre'].title()}'.\n\n¿Desea cambiar el enfoque y editar a '{profesor['nombre'].title()}'?", 
+                master=self
+            ):
+                return
+
+        if self.id_horario_editando is not None:
+            if not mostrar_pregunta("Edición Pendiente", "Tiene un horario en proceso de edición sin guardar. ¿Desea descartar los cambios y editar este docente?", master=self):
+                return
+            self.cancelar_edicion_horario()
+
+        self.seleccionar_profesor(profesor)
         VentanaCrudProfesor(self, profesor_a_editar=profesor, on_success_callback=self.cargar_lista_profesores)
 
     def eliminar_docente(self, profesor):
+        if self.profesor_seleccionado and self.profesor_seleccionado['id_profesor'] != profesor['id_profesor']:
+            if not mostrar_pregunta(
+                "Cambio de Docente", 
+                f"Actualmente está viendo los horarios de '{self.profesor_seleccionado['nombre'].title()}'.\n\n¿Desea cambiar el enfoque y eliminar a '{profesor['nombre'].title()}'?", 
+                master=self
+            ):
+                return
+
+        if self.id_horario_editando is not None:
+            if not mostrar_pregunta("Edición Pendiente", "Tiene un horario en proceso de edición sin guardar. ¿Desea descartar los cambios y proceder con la eliminación?", master=self):
+                return
+            self.cancelar_edicion_horario()
+
+        self.seleccionar_profesor(profesor)
+
         if not mostrar_pregunta("Confirmar Eliminación", f"¿Estás seguro de eliminar a {profesor['nombre']}?\nSe borrarán también todos sus horarios asignados.", master=self):
             return
         try:
@@ -431,20 +292,18 @@ class VentanaGestionDocentes(ctk.CTkToplevel):
             mostrar_exito("Éxito", "Eliminado correctamente.", master=self)
 
     def seleccionar_profesor(self, profesor):
-        """Selecciona un docente protegiendo cambios pendientes de edición (Solución Riesgo 2)."""
+        """Selecciona un docente sincronizando el foco y protegiendo ediciones pendientes."""
         if self.id_horario_editando is not None:
             if not mostrar_pregunta("Edición Pendiente", "Tiene un horario en proceso de edición sin guardar. ¿Desea descartar los cambios y cambiar de docente?", master=self):
-                return
+                return False
         
         self.profesor_seleccionado = profesor
         self.lbl_prof_seleccionado.configure(text=f"Horario: {profesor['nombre'].title()}")
         self.cancelar_edicion_horario()
         self._pintar_tarjetas()
         self.cargar_horarios_profesor()
+        return True
 
-    # ─────────────────────────────────────────────────────────
-    # GESTIÓN Y ASIGNACIÓN DE HORARIOS INDIVIDUALES
-    # ─────────────────────────────────────────────────────────
     def cargar_horarios_profesor(self):
         for child in self.scroll_horarios.winfo_children():
             child.destroy()
@@ -528,9 +387,6 @@ class VentanaGestionDocentes(ctk.CTkToplevel):
         except Exception as e:
             mostrar_error("Error", f"No se pudo eliminar el bloque:\n{e}", master=self)
 
-    # ─────────────────────────────────────────────────────────
-    # SELECCIÓN MÚLTIPLE Y ACCIONES EN BLOQUE CLARAS
-    # ─────────────────────────────────────────────────────────
     def _construir_barra_seleccion(self, panel):
         fila = ctk.CTkFrame(panel, fg_color="transparent")
         fila.grid(row=3, column=0, sticky="ew", padx=15, pady=(0, 4))
@@ -610,13 +466,146 @@ class VentanaGestionDocentes(ctk.CTkToplevel):
         VentanaBloque(self, accion, profesores, horarios, on_success_callback=self._tras_bloque)
 
     def _tras_bloque(self):
+        self.seleccion.clear()
         self.cargar_lista_profesores()
+
+    def _construir_panel_derecho(self):
+        panel = ctk.CTkFrame(self, corner_radius=16, fg_color=colores.BG_PANEL, border_width=1, border_color=colores.BORDE)
+        panel.grid(row=0, column=1, sticky="nsew", padx=(7, 15), pady=15)
+        panel.grid_columnconfigure(0, weight=1)
+        panel.grid_rowconfigure(3, weight=1)
+
+        encabezado = ctk.CTkFrame(panel, fg_color="transparent", height=45)
+        encabezado.grid(row=0, column=0, sticky="ew", padx=18, pady=(14, 8))
+        encabezado.grid_propagate(False)
+
+        self.lbl_prof_seleccionado = ctk.CTkLabel(encabezado, text="Horario Semanal", font=fuentes.seccion(size=17), text_color=colores.TEXTO_PRIMARIO)
+        self.lbl_prof_seleccionado.place(relx=0.5, rely=0.5, anchor="center")
+
+        btn_volver_menu = ctk.CTkButton(
+            encabezado, text="Volver al menú", width=120, height=32, corner_radius=8,
+            font=fuentes.boton(size=12), fg_color=colores.NEUTRO,
+            hover_color=colores.NEUTRO_HOVER, command=self.regresar_al_menu
+        )
+        btn_volver_menu.place(relx=1.0, rely=0.5, anchor="e")
+        
+        self.form_horario = FormularioHorarioWidget(
+            panel, 
+            dias_mapping=self.DIAS_MAPPING, 
+            on_guardar=self.guardar_o_actualizar_horario
+        )
+        self.form_horario.grid(row=1, column=0, sticky="ew", padx=15, pady=(4, 12))
+
+        self.cmb_dia = self.form_horario.cmb_dia
+        self.ent_entrada = self.form_horario.ent_entrada
+        self.ent_salida = self.form_horario.ent_salida
+        self.btn_accion_horario = self.form_horario.btn_accion_horario
+        self.btn_cancelar_edicion = self.form_horario.btn_cancelar_edicion
+        self.btn_cancelar_edicion.configure(command=self.cancelar_edicion_horario)
+
+        self.scroll_horarios = ctk.CTkScrollableFrame(panel, fg_color="transparent")
+        self.scroll_horarios.grid(row=3, column=0, sticky="nsew", padx=10, pady=(0, 15))
+
+    def cargar_lista_profesores(self):
+        try:
+            self.profesores_cache = db.obtener_profesores()
+        except Exception as e:
+            mostrar_error("Error de Conexión", f"No se pudo conectar a la base de datos:\n{e}", master=self)
+            return
+
+        self.seleccion &= {p['id_profesor'] for p in self.profesores_cache}
         if self.profesor_seleccionado:
-            self.cargar_horarios_profesor()
+            actual = next((p for p in self.profesores_cache if p['id_profesor'] == self.profesor_seleccionado['id_profesor']), None)
+            self.profesor_seleccionado = actual
+            self.lbl_prof_seleccionado.configure(text=f"Horario: {actual['nombre'].title()}" if actual else "Horario semanal")
+            if not actual:
+                self.cargar_horarios_profesor()
 
-    def cargar_archivo_masivo(self):
-        VentanaImportar(self, on_success_callback=self.cargar_lista_profesores)
+        self._aplicar_filtro()
+        self.pagina_actual = min(self.pagina_actual, self.total_paginas())
+        self.renderizar_pagina()
 
-if __name__ == "__main__":
-    app = VentanaGestionDocentes()
-    app.mainloop()
+    def _aplicar_filtro(self):
+        query = self.var_busqueda.get().strip().lower()
+        self.profesores_filtrados = [p for p in self.profesores_cache if query in p['nombre'].lower() or query in p['area'].lower()] if query else self.profesores_cache.copy()
+
+    def filtrar_profesores(self, *args):
+        self._aplicar_filtro()
+        self.pagina_actual = 1
+        self.renderizar_pagina()
+        self._resetear_scroll()
+
+    def cambiar_limite_paginacion(self, valor):
+        self.elementos_por_pagina = int(valor)
+        self.pagina_actual = 1
+        self.renderizar_pagina()
+        self._resetear_scroll()
+
+    def total_paginas(self):
+        return math.ceil(len(self.profesores_filtrados) / self.elementos_por_pagina) or 1
+
+    def renderizar_pagina(self):
+        inicio = (self.pagina_actual - 1) * self.elementos_por_pagina
+        pagina_items = self.profesores_filtrados[inicio:inicio + self.elementos_por_pagina]
+
+        for i in range(self.MAX_POOL):
+            item = self.pool_tarjetas[i]
+            card = item["frame"]
+            lbl_nombre = item["lbl_nombre"]
+            lbl_area = item["lbl_area"]
+
+            if i < len(pagina_items):
+                prof = pagina_items[i]
+                card.profesor_asociado = prof
+                
+                estilo_tarjeta, color_area = self._estilo_tarjeta(prof)
+                lbl_nombre.configure(text=f"{prof['nombre'].title()}")
+                lbl_turno = prof.get('turno', 'Matutino')
+                lbl_area.configure(text=f"{prof['area'].title()}  •  {lbl_turno}")
+                card.configure(**estilo_tarjeta, cursor="hand2")
+                lbl_area.configure(text_color=color_area)
+
+                item["var_chk"].set(prof['id_profesor'] in self.seleccion)
+                item["chk"].configure(command=lambda i=prof['id_profesor'], v=item["var_chk"]: self.alternar_seleccion(i, v.get()))
+                item["chk"].grid()
+
+                item["btn_edit"].configure(command=lambda p=prof: self.abrir_ventana_edicion(p))
+                item["btn_del"].configure(command=lambda p=prof: self.eliminar_docente(p))
+
+                card.grid(row=i, column=0, sticky="ew", pady=1, padx=2)
+                item["btn_frame"].grid()
+            else:
+                card.profesor_asociado = None
+                lbl_nombre.configure(text="")
+                lbl_area.configure(text="")
+                item["btn_frame"].grid_remove()
+                item["chk"].grid_remove()
+                card.grid_remove()
+
+        total_pags = self.total_paginas()
+        self.lbl_paginacion.configure(text=f"Pág {self.pagina_actual} / {total_pags}")
+
+        self.btn_prev.configure(state="normal" if self.pagina_actual > 1 else "disabled")
+        self.btn_next.configure(state="normal" if self.pagina_actual < total_pags else "disabled")
+
+        self.container_profesores.update_idletasks()
+        self._actualizar_barra_seleccion()
+
+    def pagina_anterior(self):
+        if self.pagina_actual > 1:
+            self.pagina_actual -= 1
+            self.renderizar_pagina()
+            self._resetear_scroll()
+
+    def pagina_siguiente(self):
+        if self.pagina_actual < self.total_paginas():
+            self.pagina_actual += 1
+            self.renderizar_pagina()
+            self._resetear_scroll()
+
+    def _resetear_scroll(self):
+        """Devuelve el scroll del contenedor de profesores de vuelta al inicio (arriba)."""
+        try:
+            self.container_profesores._parent_canvas.yview_moveto(0)
+        except Exception:
+            pass

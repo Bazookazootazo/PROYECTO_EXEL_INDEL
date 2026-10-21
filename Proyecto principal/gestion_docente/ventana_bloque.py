@@ -10,7 +10,7 @@ SIN_CAMBIO = "sin cambio"
 ACCIONES = {
     "datos": dict(titulo="Actualización masiva de datos generales", boton="Aplicar cambios", destructiva=False,
                   color=colores.ACENTO, hover=colores.ACENTO_HOVER),
-    "asignar": dict(titulo="Asignación masiva de horio(s)", boton="Asignar horio(s)", destructiva=False,
+    "asignar": dict(titulo="Asignación masiva de horario(s)", boton="Asignar horario(s)", destructiva=False,
                     color=colores.EXITO, hover=colores.EXITO_HOVER),
     "quitar": dict(titulo="Quitar masivamente horarios", boton="Aplicar cambios", destructiva=True,
                    color=colores.ADVERTENCIA, hover=colores.ADVERTENCIA_HOVER),
@@ -24,7 +24,6 @@ class VentanaBloque(ctk.CTkToplevel):
         self.on_success_callback = on_success_callback
         self.plan = None
 
-        # Flujo directo para eliminación masiva (mensaje rápido sin ventana recargada)
         if accion == "eliminar":
             self.withdraw()
             plan = ops.planificar_eliminar(self.profesores, self.horarios)
@@ -48,8 +47,8 @@ class VentanaBloque(ctk.CTkToplevel):
         self.cfg = ACCIONES[accion]
 
         self.title(self.cfg["titulo"])
-        self.geometry("480x420")
-        self.minsize(480, 420)
+        self.geometry("485x420")
+        self.minsize(485, 420)
         self.resizable(True, True)
         self.configure(fg_color=colores.BG_VENTANA)
         
@@ -60,7 +59,7 @@ class VentanaBloque(ctk.CTkToplevel):
         self.grid_rowconfigure(0, weight=1)
 
         self.bind("<Escape>", lambda e: self.destroy())
-        self._centrar_ventana(parent, 480, 420)
+        self._centrar_ventana(parent, 485, 420)
 
         main_frame = ctk.CTkFrame(self, corner_radius=14, fg_color=colores.BG_PANEL, border_width=1, border_color=colores.BORDE)
         main_frame.grid(row=0, column=0, sticky="nsew", padx=12, pady=12)
@@ -76,15 +75,13 @@ class VentanaBloque(ctk.CTkToplevel):
             anchor="center"
         ).pack(fill="x")
 
-        self.form_frame = ctk.CTkScrollableFrame(main_frame, fg_color="transparent")
+        self.form_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
         self.form_frame.pack(fill="both", expand=True, padx=16, pady=(0, 8))
         self.form_frame.grid_columnconfigure(0, weight=1)
 
         {"datos": self._params_datos, "asignar": self._params_asignar,
          "quitar": self._params_quitar}.get(accion, lambda: None)()
          
-        self._vista_previa()
-
         pie = ctk.CTkFrame(main_frame, fg_color="transparent")
         pie.pack(fill="x", padx=16, pady=(0, 14))
         pie.grid_columnconfigure(0, weight=1)
@@ -145,16 +142,8 @@ class VentanaBloque(ctk.CTkToplevel):
                                  fg_color=colores.BG_ENTRADA, button_color=colores.ACENTO,
                                  button_hover_color=colores.ACENTO_HOVER, command=self.recalcular)
 
-    def _vista_previa(self):
-        card = self._tarjeta("Vista Previa de Impacto Operativo")
-        # Frame limpio sin scroll interno anidado
-        self.vista = ctk.CTkFrame(card, fg_color="transparent")
-        self.vista.pack(fill="x", padx=12, pady=(0, 10))
-        self.vista.grid_columnconfigure(0, weight=1)
-
-    # ───────────── Parámetros dinámicos por acción ─────────────
     def _params_datos(self):
-        card = self._tarjeta("Configuración de Nuevos Valores")
+        card = self._tarjeta("Nuevos datos para los docentes seleccionados")
         fila = ctk.CTkFrame(card, fg_color="transparent")
         fila.pack(fill="x", padx=12, pady=(0, 10))
         fila.grid_columnconfigure((0, 1, 2), weight=1)
@@ -177,16 +166,24 @@ class VentanaBloque(ctk.CTkToplevel):
             setattr(self, atributo, menu)
 
     def _params_asignar(self):
-        card = self._tarjeta("Configuración del Turno")
+        card = self._tarjeta("Asigna los nuevos horarios a los docentes selecciondos")
         
         dias_frame = ctk.CTkFrame(card, fg_color="transparent")
         dias_frame.pack(fill="x", padx=12, pady=(0, 8))
+        
+        for col in range(5):
+            dias_frame.grid_columnconfigure(col, weight=1)
+
         self.var_dias = {}
-        for nombre, id_dia in DIAS.items():
+        for idx, (nombre, id_dia) in enumerate(DIAS.items()):
             var = ctk.BooleanVar(value=False)
-            ctk.CTkCheckBox(dias_frame, text=nombre[:3], variable=var, command=self.recalcular, checkbox_width=16,
-                            checkbox_height=16, fg_color=colores.ACENTO, hover_color=colores.ACENTO_HOVER,
-                            border_color=colores.BORDE_CLARO, font=fuentes.cuerpo(size=11), width=65).pack(side="left", padx=(0, 6), pady=2)
+            chk = ctk.CTkCheckBox(
+                dias_frame, text=nombre[:3], variable=var, command=self.recalcular, 
+                checkbox_width=16, checkbox_height=16, 
+                fg_color=colores.ACENTO, hover_color=colores.ACENTO_HOVER,
+                border_color=colores.BORDE_CLARO, font=fuentes.cuerpo(size=11)
+            )
+            chk.grid(row=0, column=idx, padx=2, sticky="w")
             self.var_dias[id_dia] = var
 
         horas_frame = ctk.CTkFrame(card, fg_color="transparent")
@@ -212,11 +209,11 @@ class VentanaBloque(ctk.CTkToplevel):
 
     def _params_quitar(self):
         turnos = ops.turnos_en_seleccion(self.profesores, self.horarios)
-        card = self._tarjeta("Turnos Registrados en la Selección")
+        card = self._tarjeta("Selecciona un dia y horario a quitar")
         self.var_turnos = {}
         
         if not turnos:
-            ctk.CTkLabel(card, text="No se encontraron turnos activos.", font=fuentes.cuerpo(size=11),
+            ctk.CTkLabel(card, text="No se encontraron horarios activos.", font=fuentes.cuerpo(size=11),
                          text_color=colores.TEXTO_TENUE).pack(padx=12, pady=(0, 10))
             return
             
@@ -262,41 +259,15 @@ class VentanaBloque(ctk.CTkToplevel):
         elif a == "quitar":
             plan = ops.planificar_quitar(self.profesores, self.horarios, {c for c, v in self.var_turnos.items() if v.get()})
             if not self.var_turnos:
-                plan.error = "No hay turnos disponibles para procesar."
+                plan.error = "No hay horarios disponibles para procesar."
         else:
             plan = ops.Plan("eliminar")
+            
         self.plan = plan
-        self._mostrar_plan(plan)
-
-    def _mostrar_plan(self, plan):
-        for w in self.vista.winfo_children():
-            w.destroy()
-
-        if plan.error:
-            ctk.CTkLabel(self.vista, text=plan.error, font=fuentes.cuerpo(size=11), text_color=colores.ADVERTENCIA,
-                         anchor="w", justify="left").pack(fill="x", pady=(0, 2))
-        else:
-            color = {"ok": colores.TEXTO_PRIMARIO, "info": colores.TEXTO_SECUNDARIO, "aviso": colores.ADVERTENCIA}
-            for ln in plan.lineas:
-                bloque = ctk.CTkFrame(self.vista, fg_color="transparent")
-                bloque.pack(fill="x", pady=(0, 4))
-                
-                lbl_ln = ctk.CTkLabel(bloque, text=ln.texto,
-                                      font=fuentes.cuerpo(size=11) if ln.nivel == "info" else fuentes.boton(size=11), 
-                                      text_color=color[ln.nivel], anchor="w", justify="left")
-                lbl_ln.pack(fill="x")
-                bloque.bind("<Configure>", lambda e, l=lbl_ln: l.configure(wraplength=e.width))
-
-                if ln.detalle:
-                    texto = ("\n" if ln.lista else ", ").join(f"•  {d}" if ln.lista else d for d in ln.detalle)
-                    lbl_det = ctk.CTkLabel(bloque, text=texto, font=fuentes.pequena(size=10), text_color=colores.TEXTO_TENUE,
-                                           anchor="w", justify="left")
-                    lbl_det.pack(fill="x", padx=(20, 0), pady=(1, 0))
-                    bloque.bind("<Configure>", lambda e, l=lbl_det: l.configure(wraplength=e.width - 20))
-
+        
         self.btn_aplicar.configure(state="normal" if plan.aplicable else "disabled")
         if plan.error:
-            self.lbl_estado.configure(text="")
+            self.lbl_estado.configure(text=plan.error)
         elif not plan.cambios:
             self.lbl_estado.configure(text="No se detectan cambios aplicables.")
         else:
