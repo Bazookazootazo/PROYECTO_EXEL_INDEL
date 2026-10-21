@@ -33,7 +33,7 @@ class VentanaBloque(ctk.CTkToplevel):
                     f"más sus horarios asociados.\n\n"
                     f"Procure confirmar si está seguro de la acción."
                 )
-                if mostrar_pregunta("Baja Masiva de Docentes", mensaje, master=parent):
+                if mostrar_pregunta("Baja masiva de docentes", mensaje, master=parent):
                     try:
                         resultado = ops.aplicar(plan)
                         if self.on_success_callback:

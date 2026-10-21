@@ -249,8 +249,8 @@ class VentanaGestionDocentes(ctk.CTkToplevel):
     def abrir_ventana_edicion(self, profesor):
         if self.profesor_seleccionado and self.profesor_seleccionado['id_profesor'] != profesor['id_profesor']:
             if not mostrar_pregunta(
-                "Cambio de Docente", 
-                f"Actualmente está viendo los horarios de '{self.profesor_seleccionado['nombre'].title()}'.\n\n¿Desea cambiar el enfoque y editar a '{profesor['nombre'].title()}'?", 
+                "Cambio de docente", 
+                f"¿Desea cambiar y editar a '{profesor['nombre'].title()}'?", 
                 master=self
             ):
                 return
@@ -266,8 +266,8 @@ class VentanaGestionDocentes(ctk.CTkToplevel):
     def eliminar_docente(self, profesor):
         if self.profesor_seleccionado and self.profesor_seleccionado['id_profesor'] != profesor['id_profesor']:
             if not mostrar_pregunta(
-                "Cambio de Docente", 
-                f"Actualmente está viendo los horarios de '{self.profesor_seleccionado['nombre'].title()}'.\n\n¿Desea cambiar el enfoque y eliminar a '{profesor['nombre'].title()}'?", 
+                "Cambio de docente", 
+                f"¿Desea cambiar y eliminar a '{profesor['nombre'].title()}'?", 
                 master=self
             ):
                 return
