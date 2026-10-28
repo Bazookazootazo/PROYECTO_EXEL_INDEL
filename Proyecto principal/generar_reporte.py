@@ -1,5 +1,6 @@
 import os
 import calendar
+from bisect import bisect_right
 from datetime import datetime, date, timedelta
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
@@ -15,6 +16,97 @@ from utilerias.messagebox_variados import mostrar_advertencia, mostrar_error, mo
 
 # Minutos de tolerancia
 TOLERANCIA_MIN = 10
+
+# Dos horarios de un mismo día separados por menos de estos minutos cuentan como un solo horario continuo
+HUECO_MINIMO_MIN = 60
+
+
+def _a_hora(valor):
+    """MySQL entrega TIME como timedelta; se convierte a hora del día."""
+    return (datetime.min + valor).time() if isinstance(valor, timedelta) else valor
+
+
+def _minutos(hora):
+    return hora.hour * 60 + hora.minute + hora.second / 60
+
+
+def agrupar_turnos(turnos):
+    """
+    [(entrada, salida), ...] -> horarios continuos del día, ordenados y como `time`.
+    Los horarios que se tocan, se traslapan o quedan separados por menos de HUECO_MINIMO_MIN se unen en uno solo
+    (el docente no sale entre ellos, por ejemplo clases seguidas). Un descanso mayor (mañana / tarde) los separa.
+    """
+    unidos = []
+    for entrada, salida in sorted((_a_hora(e), _a_hora(s)) for e, s in turnos):
+        if unidos and _minutos(entrada) - _minutos(unidos[-1][1]) < HUECO_MINIMO_MIN:
+            unidos[-1] = (unidos[-1][0], max(unidos[-1][1], salida))
+        else:
+            unidos.append((entrada, salida))
+    return unidos
+
+
+def evaluar_horario(dia, hora_entrada, hora_salida, checadas):
+    """
+    Qué se escribe en (Entrada, Salida) para UN horario y cuántos minutos de retardo suma.
+    checadas: las ponchadas [datetime, ...] que pertenecen a ese horario, ordenadas.
+    """
+    if not checadas:
+        return "FI", "FI", 0
+
+    dt_entrada_esp = datetime.combine(dia, _a_hora(hora_entrada))
+    dt_salida_esp = datetime.combine(dia, _a_hora(hora_salida))
+    midpoint = dt_entrada_esp + (dt_salida_esp - dt_entrada_esp) / 2
+
+    if len(checadas) == 1:
+        p = checadas[0]
+        primera_ch, ultima_ch = (p, None) if p <= midpoint else (None, p)
+    else:
+        primera_ch, ultima_ch = checadas[0], checadas[-1]
+
+    retardo = 0
+    if primera_ch:
+        primera_min = primera_ch.replace(second=0, microsecond=0)
+        limite_tolerancia = dt_entrada_esp + timedelta(minutes=TOLERANCIA_MIN)
+        if primera_min <= limite_tolerancia:
+            val_entrada = primera_ch.strftime("%H:%M")
+        else:
+            retardo = int((primera_min - limite_tolerancia).total_seconds() // 60)
+            val_entrada = f"{primera_ch.strftime('%H:%M')} R ({retardo}m)"
+    else:
+        val_entrada = "FIE"
+
+    val_salida = ultima_ch.strftime("%H:%M") if ultima_ch else "FIS"
+    return val_entrada, val_salida, retardo
+
+
+def celdas_del_dia(dia, turnos, checadas):
+    """
+    Qué se escribe para un docente en un día: una tupla (entrada, salida, minutos_retardo) POR HORARIO.
+    turnos:   [(hora_entrada, hora_salida), ...] programados ese día (ninguno, uno o varios)
+    checadas: [datetime, ...] ordenadas
+    Con dos horarios en un día (mañana y tarde) cada ponchada se asigna al horario al que pertenece
+    (la frontera es la mitad del descanso entre ambos) y cada horario se evalúa por separado.
+    """
+    if not turnos:
+        # Sin horario ese día no hay falta ni retardo que evaluar, pero las ponchadas que existan SÍ se muestran.
+        if not checadas:
+            return [("N/A", "N/A", 0)]
+        if len(checadas) > 1:
+            return [(checadas[0].strftime("%H:%M"), checadas[-1].strftime("%H:%M"), 0)]
+        p = checadas[0]       # una sola ponchada y sin horario de referencia: antes de las 12:00 se toma como entrada
+        return [(p.strftime("%H:%M"), "N/A", 0) if p.hour < 12 else ("N/A", p.strftime("%H:%M"), 0)]
+
+    horarios_dia = agrupar_turnos(turnos)
+    if len(horarios_dia) == 1:
+        return [evaluar_horario(dia, *horarios_dia[0], checadas)]
+
+    inicio_dia = datetime.combine(dia, datetime.min.time())
+    fronteras = [inicio_dia + timedelta(minutes=(_minutos(a[1]) + _minutos(b[0])) / 2)
+                 for a, b in zip(horarios_dia, horarios_dia[1:])]
+    grupos = [[] for _ in horarios_dia]
+    for p in checadas:
+        grupos[bisect_right(fronteras, p)].append(p)
+    return [evaluar_horario(dia, entrada, salida, grupo) for (entrada, salida), grupo in zip(horarios_dia, grupos)]
 
 
 class VentanaExcepcionesDialog(ctk.CTkToplevel):
@@ -95,10 +187,10 @@ class VentanaExcepcionesDialog(ctk.CTkToplevel):
         motivo = self.cb_motivo.get().strip()
 
         if not fecha or fecha == "No hay días hábiles":
-            mostrar_advertencia("Advertencia", "No hay fechas disponibles para seleccionar.")
+            mostrar_advertencia("Advertencia", "No hay fechas disponibles para seleccionar.", master=self)
             return
         if not motivo:
-            mostrar_advertencia("Advertencia", "Escribe o selecciona un motivo.")
+            mostrar_advertencia("Advertencia", "Escribe o selecciona un motivo.", master=self)
             return
 
         item = (docente, fecha, motivo)
@@ -176,7 +268,7 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
             cursor.close()
             conn.close()
         except Exception as e:
-            mostrar_error("Error BD", f"No se pudieron cargar las áreas:\n{e}")
+            mostrar_error("Error BD", f"No se pudieron cargar las áreas:\n{e}", master=self)
 
     @staticmethod
     def parsear_excepciones(texto_excepciones):
@@ -222,10 +314,10 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
             fecha_fin = datetime.strptime(f_fin_str, '%d/%m/%Y').date()
             
             if fecha_inicio > fecha_fin:
-                mostrar_error("Error", "La fecha de inicio no puede ser posterior a la fecha fin.")
+                mostrar_error("Error", "La fecha de inicio no puede ser posterior a la fecha fin.", master=self)
                 return
         except ValueError:
-            mostrar_error("Error de Formato", "Ingresa fechas válidas (DD/MM/AAAA) antes de asignar días libres.")
+            mostrar_error("Error de Formato", "Ingresa fechas válidas (DD/MM/AAAA) antes de asignar días libres.", master=self)
             return
 
         try:
@@ -259,10 +351,47 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
         else:
             self.lbl_estado_excepciones.configure(text="Sin excepciones asignadas.", text_color=colores.TEXTO_SECUNDARIO)
 
+    def cargar_datos_reporte(self, area, fecha_inicio, fecha_fin):
+        """
+        Docentes del área, sus horarios y sus ponchadas del periodo, en 3 consultas
+        (antes eran 2 consultas por docente por día). Cierra siempre la conexión.
+        Devuelve (docentes, horarios, checadas_por_dia):
+            horarios:         {(id_profesor, id_dia): [(entrada, salida), ...]}   (puede haber varios turnos)
+            checadas_por_dia: {(id_profesor, fecha): [datetime, ...]}
+        """
+        conn = self.obtener_conexion_bd()
+        try:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute("SELECT id_profesor, nombre FROM profesores WHERE area = %s ORDER BY nombre ASC", (area,))
+            docentes = cursor.fetchall()
+            if not docentes:
+                return [], {}, {}
+
+            ids = [d['id_profesor'] for d in docentes]
+            marcadores = ",".join(["%s"] * len(ids))
+
+            horarios = {}
+            cursor.execute(f"SELECT id_profesor, id_dia, hora_entrada, hora_salida FROM horarios_docentes "
+                           f"WHERE id_profesor IN ({marcadores}) ORDER BY id_horario", ids)
+            for fila in cursor.fetchall():
+                horarios.setdefault((fila['id_profesor'], fila['id_dia']), []).append((fila['hora_entrada'], fila['hora_salida']))
+
+            checadas_por_dia = {}
+            cursor.execute(f"SELECT id_profesor, fecha_hora FROM checadas "
+                           f"WHERE id_profesor IN ({marcadores}) AND fecha_hora BETWEEN %s AND %s "
+                           f"ORDER BY id_profesor, fecha_hora ASC",
+                           ids + [datetime.combine(fecha_inicio, datetime.min.time()), datetime.combine(fecha_fin, datetime.max.time())])
+            for fila in cursor.fetchall():
+                checadas_por_dia.setdefault((fila['id_profesor'], fila['fecha_hora'].date()), []).append(fila['fecha_hora'])
+
+            return docentes, horarios, checadas_por_dia
+        finally:
+            conn.close()
+
     def generar_excel_quincenal(self):
         area_seleccionada = self.cb_area.get().strip()
         if not area_seleccionada or area_seleccionada == "Sin áreas registradas":
-            mostrar_advertencia("Advertencia", "Selecciona un área válida.")
+            mostrar_advertencia("Advertencia", "Selecciona un área válida.", master=self)
             return
 
         try:
@@ -273,10 +402,10 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
             fecha_fin = datetime.strptime(f_fin_str, '%d/%m/%Y').date()
             
             if fecha_inicio > fecha_fin:
-                mostrar_error("Error", "La fecha de inicio no puede ser posterior a la fecha fin.")
+                mostrar_error("Error", "La fecha de inicio no puede ser posterior a la fecha fin.", master=self)
                 return
         except ValueError:
-            mostrar_error("Error de Formato", "Las fechas deben tener el formato válido DD/MM/AAAA (ej. 01/12/2025).")
+            mostrar_error("Error de Formato", "Las fechas deben tener el formato válido DD/MM/AAAA (ej. 01/12/2025).", master=self)
             return
 
         excepciones_globales, excepciones_docente = self.parsear_excepciones(self.excepciones_texto_guardado)
@@ -298,20 +427,12 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
             self.lbl_estado_dot.configure(text_color=colores.ESTADO_PROCESANDO)
             self.update()
 
-            conn = self.obtener_conexion_bd()
-            cursor = conn.cursor(dictionary=True)
-
-            query_docentes = """
-                SELECT id_profesor, nombre 
-                FROM profesores 
-                WHERE area = %s 
-                ORDER BY nombre ASC
-            """
-            cursor.execute(query_docentes, (area_seleccionada,))
-            docentes = cursor.fetchall()
+            docentes, horarios, checadas_por_dia = self.cargar_datos_reporte(area_seleccionada, fecha_inicio, fecha_fin)
 
             if not docentes:
-                mostrar_advertencia("Sin Datos", f"No hay docentes registrados en el área: {area_seleccionada}")
+                self.lbl_estado_texto.configure(text="Listo para generar reporte.")
+                self.lbl_estado_dot.configure(text_color=colores.ESTADO_INACTIVO)
+                mostrar_advertencia("Sin Datos", f"No hay docentes registrados en el área: {area_seleccionada}", master=self)
                 return
 
             dias_quincena = []
@@ -441,99 +562,58 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
 
             fila_actual = 10
 
+            def escribir_bloque(fila_ini, fila_fin, col, valor, fuente, alineacion):
+                """Escribe una celda que puede ocupar varias filas (con borde en todas para que se imprima completa)."""
+                for r in range(fila_ini, fila_fin + 1):
+                    ws.cell(row=r, column=col).border = thin_border
+                celda = ws.cell(row=fila_ini, column=col, value=valor)
+                celda.font = fuente
+                celda.alignment = alineacion
+                if fila_fin > fila_ini:
+                    ws.merge_cells(start_row=fila_ini, start_column=col, end_row=fila_fin, end_column=col)
+
+            hay_doble_horario = False
+
             for doc in docentes:
                 id_prof = doc['id_profesor']
                 nombre_prof = doc['nombre']
                 nombre_norm = nombre_prof.strip().lower()
 
-                ws.cell(row=fila_actual, column=1, value=nombre_prof).font = f_bold
-                ws.cell(row=fila_actual, column=1).alignment = align_left
-                ws.cell(row=fila_actual, column=1).border = thin_border
-
-                total_retardo_min = 0
-                col_dia = 2
-
+                # Qué va en cada día: una (entrada, salida, retardo) por cada horario del día
+                por_dia = []
                 for d in dias_quincena:
-                    val_entrada = ""
-                    val_salida = ""
-
                     circunstancia_docente = excepciones_docente.get((nombre_norm, d))
                     circunstancia_global = excepciones_globales.get(d)
 
                     if circunstancia_docente:
-                        val_entrada = circunstancia_docente
-                        val_salida = circunstancia_docente
+                        celdas = [(circunstancia_docente, circunstancia_docente, 0)]
                     elif circunstancia_global:
-                        val_entrada = circunstancia_global
-                        val_salida = circunstancia_global
+                        celdas = [(circunstancia_global, circunstancia_global, 0)]
                     else:
-                        st_date = datetime.combine(d, datetime.min.time())
-                        end_date = datetime.combine(d, datetime.max.time())
-                        id_dia_bd = d.weekday() + 1
+                        celdas = celdas_del_dia(
+                            d, horarios.get((id_prof, d.weekday() + 1), ()), checadas_por_dia.get((id_prof, d), ()))
+                    por_dia.append(celdas)
 
-                        q_horario = "SELECT hora_entrada, hora_salida FROM horarios_docentes WHERE id_profesor = %s AND id_dia = %s"
-                        cursor.execute(q_horario, (id_prof, id_dia_bd))
-                        horario_doc = cursor.fetchone()
+                # Un docente con dos horarios en algún día del periodo ocupa dos filas
+                filas_doc = max(len(celdas) for celdas in por_dia)
+                hay_doble_horario = hay_doble_horario or filas_doc > 1
+                total_retardo_min = sum(retardo for celdas in por_dia for _, _, retardo in celdas)
+                fila_fin = fila_actual + filas_doc - 1
 
-                        q_checadas = "SELECT fecha_hora FROM checadas WHERE id_profesor = %s AND fecha_hora BETWEEN %s AND %s ORDER BY fecha_hora ASC"
-                        cursor.execute(q_checadas, (id_prof, st_date, end_date))
-                        checadas = [row['fecha_hora'] for row in cursor.fetchall()]
+                escribir_bloque(fila_actual, fila_fin, 1, nombre_prof, f_bold, align_left)
 
-                        if not horario_doc:
-                            val_entrada = "N/A"
-                            val_salida = "N/A"
-                        elif not checadas:
-                            val_entrada = "FI"
-                            val_salida = "FI"
-                        else:
-                            h_entrada_esp = horario_doc['hora_entrada']
-                            h_salida_esp = horario_doc['hora_salida']
-
-                            dt_entrada_esp = datetime.combine(d, (datetime.min + h_entrada_esp).time() if isinstance(h_entrada_esp, timedelta) else h_entrada_esp)
-                            dt_salida_esp = datetime.combine(d, (datetime.min + h_salida_esp).time() if isinstance(h_salida_esp, timedelta) else h_salida_esp)
-                            midpoint = dt_entrada_esp + (dt_salida_esp - dt_entrada_esp) / 2
-
-                            if len(checadas) == 1:
-                                p = checadas[0]
-                                primera_ch, ultima_ch = (p, None) if p <= midpoint else (None, p)
-                            else:
-                                primera_ch, ultima_ch = checadas[0], checadas[-1]
-
-                            if primera_ch:
-                                primera_min = primera_ch.replace(second=0, microsecond=0)
-                                limite_tolerancia = dt_entrada_esp + timedelta(minutes=TOLERANCIA_MIN)
-                                if primera_min <= limite_tolerancia:
-                                    val_entrada = primera_ch.strftime("%H:%M")
-                                else:
-                                    retardo_min = int((primera_min - limite_tolerancia).total_seconds() // 60)
-                                    val_entrada = f"{primera_ch.strftime('%H:%M')} R ({retardo_min}m)"
-                                    total_retardo_min += retardo_min
-                            else:
-                                val_entrada = "FIE"
-
-                            if ultima_ch:
-                                val_salida = ultima_ch.strftime("%H:%M")
-                            else:
-                                val_salida = "FIS"
-
-                    c_ent = ws.cell(row=fila_actual, column=col_dia, value=val_entrada)
-                    c_sal = ws.cell(row=fila_actual, column=col_dia + 1, value=val_salida)
-
-                    c_ent.font = f_normal
-                    c_sal.font = f_normal
-                    c_ent.alignment = align_center
-                    c_sal.alignment = align_center
-                    c_ent.border = thin_border
-                    c_sal.border = thin_border
-
+                col_dia = 2
+                for celdas in por_dia:
+                    for i, (val_entrada, val_salida, _) in enumerate(celdas):
+                        f_ini = fila_actual + i
+                        f_fin = f_ini if i < len(celdas) - 1 else fila_fin      # el último horario ocupa las filas que sobren
+                        escribir_bloque(f_ini, f_fin, col_dia, val_entrada, f_normal, align_center)
+                        escribir_bloque(f_ini, f_fin, col_dia + 1, val_salida, f_normal, align_center)
                     col_dia += 2
 
-                c_tot = ws.cell(row=fila_actual, column=col_dia, value=f"{total_retardo_min} min" if total_retardo_min > 0 else "0")
-                c_tot.font = f_bold
-                c_tot.alignment = align_center
-                c_tot.border = thin_border
+                escribir_bloque(fila_actual, fila_fin, col_dia, f"{total_retardo_min} min" if total_retardo_min > 0 else "0", f_bold, align_center)
 
-                fila_actual += 1
+                fila_actual = fila_fin + 1
 
             fila_actual += 2
             ws.merge_cells(f"A{fila_actual}:{col_total_letter}{fila_actual}")
@@ -552,6 +632,13 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
             ws[f"A{fila_actual}"] = "Después de los 10 minutos de TOLERANCIA se comenzarán a contar los minutos de Retardo del Personal de UTN."
             ws[f"A{fila_actual}"].font = f_normal
             ws[f"A{fila_actual}"].alignment = align_center
+
+            if hay_doble_horario:
+                fila_actual += 1
+                ws.merge_cells(f"A{fila_actual}:{col_total_letter}{fila_actual}")
+                ws[f"A{fila_actual}"] = "Docentes con dos horarios en un mismo día: la primera línea corresponde al primer horario y la segunda al segundo; cada horario se evalúa por separado."
+                ws[f"A{fila_actual}"].font = f_normal
+                ws[f"A{fila_actual}"].alignment = align_center
 
             fila_actual += 2
             ws.merge_cells(f"A{fila_actual}:{col_total_letter}{fila_actual}")
@@ -595,17 +682,28 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
                 ws.column_dimensions[col_letter].width = 6.0
 
             wb.save(ruta_guardado)
-            cursor.close()
-            conn.close()
 
             self.lbl_estado_texto.configure(text="Reporte generado exitosamente.")
             self.lbl_estado_dot.configure(text_color=colores.ESTADO_EXITO)
-            mostrar_exito("Éxito", f"El reporte ha sido generado correctamente en:\n{ruta_guardado}")
+
+            # Docentes sin NINGÚN horario registrado: su reporte solo puede mostrar ponchadas (no hay faltas ni retardos que calcular)
+            con_horario = {id_prof for id_prof, _ in horarios}
+            sin_horario = [d['nombre'] for d in docentes if d['id_profesor'] not in con_horario]
+            if sin_horario:
+                lista = "\n".join(f"   – {n}" for n in sin_horario[:10]) + (f"\n   – … y {len(sin_horario) - 10} más" if len(sin_horario) > 10 else "")
+                mostrar_advertencia(
+                    "Reporte generado con observaciones",
+                    f"El reporte se guardó en:\n{ruta_guardado}\n\n"
+                    f"Estos docentes no tienen horario registrado, por eso no se calcularon sus faltas ni retardos "
+                    f"(solo aparecen sus ponchadas):\n{lista}\n\n"
+                    "Regístrales su horario en «Gestión de Docentes».", master=self)
+            else:
+                mostrar_exito("Éxito", f"El reporte ha sido generado correctamente en:\n{ruta_guardado}", master=self)
 
         except Exception as err:
             self.lbl_estado_texto.configure(text="Error al generar reporte")
             self.lbl_estado_dot.configure(text_color=colores.ESTADO_ERROR)
-            mostrar_error("Error", f"Fallo durante la generación del reporte:\n{err}")
+            mostrar_error("Error", f"Fallo durante la generación del reporte:\n{err}", master=self)
 
     def regresar_al_menu(self):
         if self.parent:

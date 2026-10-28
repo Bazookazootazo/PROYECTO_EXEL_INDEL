@@ -127,7 +127,7 @@ class VentanaGestionDocentes(ctk.CTkToplevel):
         ).grid(row=0, column=0, sticky="ew", padx=(0, 5))
 
         ctk.CTkButton(
-            btn_frame_acciones, text="Importar datos", command=self.cargar_archivo_masivo,
+            btn_frame_acciones, text="Importar Hor", command=self.cargar_archivo_masivo,
             font=fuentes.boton(size=13), height=38, corner_radius=10,
             fg_color=colores.EXITO, hover_color=colores.EXITO_HOVER,
         ).grid(row=0, column=1, sticky="ew", padx=(5, 0))
