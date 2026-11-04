@@ -8,6 +8,7 @@ from utilerias import database as db
 from utilerias.campo_hora import aplicar_formato_hora
 from utilerias.messagebox_variados import mostrar_advertencia, mostrar_error, mostrar_exito, mostrar_pregunta
 from utilerias.paleta_colores import colores, fuentes
+from gestion_docente.ventana_importar_horarios import VentanaImportarHorarios
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -127,9 +128,9 @@ class VentanaGestionDocentes(ctk.CTkToplevel):
         ).grid(row=0, column=0, sticky="ew", padx=(0, 5))
 
         ctk.CTkButton(
-            btn_frame_acciones, text="Importar datos", command=self.cargar_archivo_masivo,
-            font=fuentes.boton(size=13), height=38, corner_radius=10,
-            fg_color=colores.EXITO, hover_color=colores.EXITO_HOVER,
+             btn_frame_acciones, text="Importar Horarios", command=lambda: VentanaImportarHorarios(self, on_success_callback=self.cargar_lista_profesores),
+             font=fuentes.boton(size=13), height=38, corner_radius=10,
+             fg_color=colores.EXITO, hover_color=colores.EXITO_HOVER,
         ).grid(row=0, column=1, sticky="ew", padx=(5, 0))
 
         self.var_busqueda = ctk.StringVar()

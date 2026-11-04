@@ -10,14 +10,19 @@ import unicodedata
 from difflib import get_close_matches
 
 AREAS = {
-    "Tecnologías de la Información": ["ti", "tic", "tics", "sistemas", "informatica", "computacion", "sistemas computacionales"],
+    "Rectoría": [],
+    "Abogado General": [],
+    "Administración y Finanzas": ["admin", "administrativa", "administrativo"],
+    "Extensión Universitaria": [],
+    "Vinculación": [],
+    "Planeación y Evaluación": [],
+    "C.A.D.A": [],
     "Mecatrónica": [],
-    "Administración": ["admin", "administrativa", "administrativo"],
-    "Recursos Humanos": ["rh", "rrhh", "capital humano"],
-    "Ciencias Básicas": ["basicas", "ciencias", "matematicas", "fisica", "quimica"],
-    "Departamento de Prueba": ["prueba", "depto de prueba"],
+    "Tecnologías de la Información y la Comunicación": [],
+    "Procesos Industriales": [],
+    "Energías Renovables": [],
+    "Apoyo Educativo": [],
 }
-
 TIPOS = {
     "Tiempo Completo": ["tc", "ptc", "completo", "planta", "de planta", "full time"],
     "Asignatura": ["pa", "por asignatura", "por horas", "hora clase", "horas clase", "eventual", "part time"],
