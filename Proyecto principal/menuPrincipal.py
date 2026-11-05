@@ -7,7 +7,7 @@ from generar_reporte import VentanaGenerarReporte
 from registro_checadas import VentanaRegistroChecadas
 
 ctk.set_appearance_mode("dark")
-ctk.set_default_color_theme("blue")
+ctk.set_default_color_theme("blue") 
 
 app = ctk.CTk()
 app.title("Menú de Inicio - Control de Acceso")

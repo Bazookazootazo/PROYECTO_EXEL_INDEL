@@ -32,13 +32,22 @@ def obtener_conexion():
     return conexion
 
 # --- FUNCIONES PARA PROFESORES ---
+def _id_area(cursor, nombre):
+    """id de un área por su nombre (sin distinguir mayúsculas ni acentos); error claro si no existe."""
+    cursor.execute("SELECT id_area FROM areas WHERE nombre = %s", (nombre,))
+    fila = cursor.fetchone()
+    if not fila:
+        raise ValueError(f"El área «{nombre}» no está registrada.")
+    return fila[0]
+
 def agregar_profesor(nombre, area, tipo, turno):
     conexion = None
     cursor = None
     try:
         conexion = obtener_conexion()
         cursor = conexion.cursor()
-        cursor.execute("INSERT INTO profesores (nombre, area, tipo, turno) VALUES (%s, %s, %s, %s)", (nombre, area, tipo, turno))
+        cursor.execute("INSERT INTO profesores (nombre, id_area, tipo, turno) VALUES (%s, %s, %s, %s)",
+                       (nombre, _id_area(cursor, area), tipo, turno))
         conexion.commit()
         return cursor.lastrowid
     finally:
@@ -52,16 +61,13 @@ def obtener_profesores():
     try:
         conexion = obtener_conexion()
         cursor = conexion.cursor(dictionary=True)
-        # Seleccionamos campos explícitos y aseguramos un valor por defecto para 'turno'
+        # El área se expone con su nombre (JOIN), así el resto de la app no cambia
         query = """
-            SELECT 
-                id_profesor, 
-                nombre, 
-                area, 
-                tipo, 
-                COALESCE(turno, 'Matutino') AS turno 
-            FROM profesores 
-            ORDER BY nombre ASC
+            SELECT p.id_profesor, p.nombre, a.nombre AS area, p.id_area, p.tipo,
+                   p.turno
+            FROM profesores p
+            JOIN areas a ON a.id_area = p.id_area
+            ORDER BY p.nombre ASC
         """
         cursor.execute(query)
         return cursor.fetchall()
@@ -76,8 +82,8 @@ def actualizar_profesor(id_profesor, nombre, area, tipo, turno):
         conexion = obtener_conexion()
         cursor = conexion.cursor()
         cursor.execute(
-            "UPDATE profesores SET nombre = %s, area = %s, tipo = %s, turno = %s WHERE id_profesor = %s",
-            (nombre, area, tipo, turno, id_profesor)
+            "UPDATE profesores SET nombre = %s, id_area = %s, tipo = %s, turno = %s WHERE id_profesor = %s",
+            (nombre, _id_area(cursor, area), tipo, turno, id_profesor)
         )
         conexion.commit()
     finally:
@@ -91,6 +97,63 @@ def eliminar_profesor(id_profesor):
         conexion = obtener_conexion()
         cursor = conexion.cursor()
         cursor.execute("DELETE FROM profesores WHERE id_profesor = %s", (id_profesor,))
+        conexion.commit()
+    finally:
+        if cursor: cursor.close()
+        if conexion and conexion.is_connected(): conexion.close()
+
+# --- FUNCIONES PARA ÁREAS ---
+def obtener_areas():
+    """Todas las áreas con su número de docentes (incluye las que no tienen ninguno)."""
+    conexion = None
+    cursor = None
+    try:
+        conexion = obtener_conexion()
+        cursor = conexion.cursor(dictionary=True)
+        cursor.execute(
+            """SELECT a.id_area, a.nombre, COUNT(p.id_profesor) AS docentes
+               FROM areas a LEFT JOIN profesores p ON p.id_area = a.id_area
+               GROUP BY a.id_area, a.nombre
+               ORDER BY a.nombre ASC"""
+        )
+        return cursor.fetchall()
+    finally:
+        if cursor: cursor.close()
+        if conexion and conexion.is_connected(): conexion.close()
+
+def _escribir_area(query, params):
+    conexion = None
+    cursor = None
+    try:
+        conexion = obtener_conexion()
+        cursor = conexion.cursor()
+        cursor.execute(query, params)
+        conexion.commit()
+        return cursor.lastrowid
+    except mysql.connector.IntegrityError:
+        raise ValueError("Ya existe un área con ese nombre.") from None
+    finally:
+        if cursor: cursor.close()
+        if conexion and conexion.is_connected(): conexion.close()
+
+def agregar_area(nombre):
+    return _escribir_area("INSERT INTO areas (nombre) VALUES (%s)", (nombre,))
+
+def renombrar_area(id_area, nombre):
+    _escribir_area("UPDATE areas SET nombre = %s WHERE id_area = %s", (nombre, id_area))
+
+def eliminar_area(id_area):
+    """Solo elimina áreas sin docentes: jamás borra docentes (ni su historial) en cascada."""
+    conexion = None
+    cursor = None
+    try:
+        conexion = obtener_conexion()
+        cursor = conexion.cursor()
+        cursor.execute("SELECT COUNT(*) FROM profesores WHERE id_area = %s", (id_area,))
+        docentes = cursor.fetchone()[0]
+        if docentes:
+            raise ValueError(f"El área tiene {docentes} docente(s). Reasígnalos a otra área antes de eliminarla.")
+        cursor.execute("DELETE FROM areas WHERE id_area = %s", (id_area,))
         conexion.commit()
     finally:
         if cursor: cursor.close()
@@ -208,15 +271,15 @@ def aplicar_cambios(docentes):
         for d in docentes:
             if d["id"] is None:
                 cursor.execute(
-                    "INSERT INTO profesores (nombre, area, tipo, turno) VALUES (%s, %s, %s, %s)",
-                    (d["nombre"], d["area"], d["tipo"], d["turno"])
+                    "INSERT INTO profesores (nombre, id_area, tipo, turno) VALUES (%s, %s, %s, %s)",
+                    (d["nombre"], _id_area(cursor, d["area"]), d["tipo"], d["turno"])
                 )
                 d["id"] = cursor.lastrowid
                 stats["docentes_creados"] += 1
             elif d["actualizar"]:
                 cursor.execute(
-                    "UPDATE profesores SET area = %s, tipo = %s, turno = %s WHERE id_profesor = %s",
-                    (d["area"], d["tipo"], d["turno"], d["id"])
+                    "UPDATE profesores SET id_area = %s, tipo = %s, turno = %s WHERE id_profesor = %s",
+                    (_id_area(cursor, d["area"]), d["tipo"], d["turno"], d["id"])
                 )
                 stats["docentes_actualizados"] += 1
 

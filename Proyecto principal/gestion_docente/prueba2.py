@@ -1,14 +1,14 @@
 import math
 import customtkinter as ctk
 from gestion_docente import operaciones_bloque as ops
+from gestion_docente.crud_area import VentanaAreas
 from gestion_docente.crud_docente import VentanaCrudProfesor
 from gestion_docente.ventana_bloque import VentanaBloque
 from gestion_docente.ventana_importar import VentanaImportar
-from utilerias import database as db
+from utilerias import database as db 
 from utilerias.campo_hora import aplicar_formato_hora
 from utilerias.messagebox_variados import mostrar_advertencia, mostrar_error, mostrar_exito, mostrar_pregunta
 from utilerias.paleta_colores import colores, fuentes
-from gestion_docente.ventana_importar_horarios import VentanaImportarHorarios
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -119,19 +119,25 @@ class VentanaGestionDocentes(ctk.CTkToplevel):
 
         btn_frame_acciones = ctk.CTkFrame(panel, fg_color="transparent")
         btn_frame_acciones.grid(row=1, column=0, sticky="ew", padx=15, pady=(0, 6))
-        btn_frame_acciones.grid_columnconfigure((0, 1), weight=1)
+        btn_frame_acciones.grid_columnconfigure((0, 1, 2), weight=1)
 
         ctk.CTkButton(
             btn_frame_acciones, text="Nuevo docente", command=self.abrir_ventana_registro,
             font=fuentes.boton(size=13), height=38, corner_radius=10,
             fg_color=colores.ACENTO, hover_color=colores.ACENTO_HOVER,
-        ).grid(row=0, column=0, sticky="ew", padx=(0, 5))
+        ).grid(row=0, column=0, sticky="ew", padx=(0, 4))
 
         ctk.CTkButton(
-             btn_frame_acciones, text="Importar Horarios", command=lambda: VentanaImportarHorarios(self, on_success_callback=self.cargar_lista_profesores),
-             font=fuentes.boton(size=13), height=38, corner_radius=10,
-             fg_color=colores.EXITO, hover_color=colores.EXITO_HOVER,
-        ).grid(row=0, column=1, sticky="ew", padx=(5, 0))
+            btn_frame_acciones, text="Importar Hor", command=self.cargar_archivo_masivo,
+            font=fuentes.boton(size=13), height=38, corner_radius=10,
+            fg_color=colores.EXITO, hover_color=colores.EXITO_HOVER,
+        ).grid(row=0, column=1, sticky="ew", padx=4)
+
+        ctk.CTkButton(
+            btn_frame_acciones, text="Áreas", command=self.abrir_crud_areas,
+            font=fuentes.boton(size=13), height=38, corner_radius=10,
+            fg_color=colores.NEUTRO, hover_color=colores.NEUTRO_HOVER,
+        ).grid(row=0, column=2, sticky="ew", padx=(4, 0))
 
         self.var_busqueda = ctk.StringVar()
         self.var_busqueda.trace_add("write", self.filtrar_profesores)
@@ -246,6 +252,9 @@ class VentanaGestionDocentes(ctk.CTkToplevel):
                 return
             self.cancelar_edicion_horario()
         VentanaImportar(self, on_success_callback=self.cargar_lista_profesores)
+
+    def abrir_crud_areas(self):
+        VentanaAreas(self, on_change_callback=self.cargar_lista_profesores)
 
     def abrir_ventana_edicion(self, profesor):
         if self.profesor_seleccionado and self.profesor_seleccionado['id_profesor'] != profesor['id_profesor']:
@@ -592,7 +601,7 @@ class VentanaGestionDocentes(ctk.CTkToplevel):
                 
                 estilo_tarjeta, color_area = self._estilo_tarjeta(prof)
                 lbl_nombre.configure(text=f"{prof['nombre'].title()}")
-                lbl_turno = prof.get('turno', 'Matutino')
+                lbl_turno = prof.get('turno') or 'Sin turno'
                 lbl_area.configure(text=f"{prof['area'].title()}  •  {lbl_turno}")
                 card.configure(**estilo_tarjeta, cursor="hand2")
                 lbl_area.configure(text_color=color_area)

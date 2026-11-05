@@ -313,7 +313,7 @@ class VentanaSubirArchivos(ctk.CTkToplevel):
             if dfs_filtrados:
                 df_filtrado = pd.concat(dfs_filtrados, ignore_index=True).sort_values(by='fecha_dt', ascending=True).reset_index(drop=True)
             else:
-                df_filtrado = pd.DataFrame(columns=df_final.columns)
+                df_filtrado = pd.DataFrame(columns=df_final.columns) 
 
             self.actualizar_estado("Asociando nombres y guardando en BD...", colores.ESTADO_PROCESANDO)
 
