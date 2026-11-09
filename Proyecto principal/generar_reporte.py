@@ -31,11 +31,6 @@ def _minutos(hora):
 
 
 def agrupar_turnos(turnos):
-    """
-    [(entrada, salida), ...] -> horarios continuos del día, ordenados y como `time`.
-    Los horarios que se tocan, se traslapan o quedan separados por menos de HUECO_MINIMO_MIN se unen en uno solo
-    (el docente no sale entre ellos, por ejemplo clases seguidas). Un descanso mayor (mañana / tarde) los separa.
-    """
     unidos = []
     for entrada, salida in sorted((_a_hora(e), _a_hora(s)) for e, s in turnos):
         if unidos and _minutos(entrada) - _minutos(unidos[-1][1]) < HUECO_MINIMO_MIN:
@@ -46,10 +41,6 @@ def agrupar_turnos(turnos):
 
 
 def evaluar_horario(dia, hora_entrada, hora_salida, checadas):
-    """
-    Qué se escribe en (Entrada, Salida) para UN horario y cuántos minutos de retardo suma.
-    checadas: las ponchadas [datetime, ...] que pertenecen a ese horario, ordenadas.
-    """
     if not checadas:
         return "FI", "FI", 0
 
@@ -80,20 +71,12 @@ def evaluar_horario(dia, hora_entrada, hora_salida, checadas):
 
 
 def celdas_del_dia(dia, turnos, checadas):
-    """
-    Qué se escribe para un docente en un día: una tupla (entrada, salida, minutos_retardo) POR HORARIO.
-    turnos:   [(hora_entrada, hora_salida), ...] programados ese día (ninguno, uno o varios)
-    checadas: [datetime, ...] ordenadas
-    Con dos horarios en un día (mañana y tarde) cada ponchada se asigna al horario al que pertenece
-    (la frontera es la mitad del descanso entre ambos) y cada horario se evalúa por separado.
-    """
     if not turnos:
-        # Sin horario ese día no hay falta ni retardo que evaluar, pero las ponchadas que existan SÍ se muestran.
         if not checadas:
             return [("N/A", "N/A", 0)]
         if len(checadas) > 1:
             return [(checadas[0].strftime("%H:%M"), checadas[-1].strftime("%H:%M"), 0)]
-        p = checadas[0]       # una sola ponchada y sin horario de referencia: antes de las 12:00 se toma como entrada
+        p = checadas[0]       
         return [(p.strftime("%H:%M"), "N/A", 0) if p.hour < 12 else ("N/A", p.strftime("%H:%M"), 0)]
 
     horarios_dia = agrupar_turnos(turnos)
@@ -107,6 +90,172 @@ def celdas_del_dia(dia, turnos, checadas):
     for p in checadas:
         grupos[bisect_right(fronteras, p)].append(p)
     return [evaluar_horario(dia, entrada, salida, grupo) for (entrada, salida), grupo in zip(horarios_dia, grupos)]
+
+
+class VentanaSeleccionQuincenaDialog(ctk.CTkToplevel):
+    def __init__(self, parent, fecha_inicial_actual=None):
+        super().__init__(parent)
+        self.parent = parent
+        self.title("Seleccionar Inicio de Quincena (15 días)")
+        self.geometry("460x520")
+        self.configure(fg_color=colores.BG_VENTANA)
+        self.resizable(False, False)
+
+        self.focus()
+        self.grab_set()
+
+        hoy = datetime.now().date()
+        self.fecha_inicio_sel = fecha_inicial_actual if fecha_inicial_actual else date(hoy.year, hoy.month, 1)
+        self.fecha_fin_sel = self.fecha_inicio_sel + timedelta(days=14)
+
+        self.anio_vista = self.fecha_inicio_sel.year
+        self.mes_vista = self.fecha_inicio_sel.month
+
+        self.resultado_inicio = None
+        self.resultado_fin = None
+
+        self._crear_interfaz()
+        self.actualizar_calendario()
+
+    def _crear_interfaz(self):
+        main_frame = ctk.CTkFrame(master=self, fg_color=colores.BG_PANEL, corner_radius=15)
+        main_frame.pack(fill="both", expand=True, padx=15, pady=15)
+
+        lbl_titulo = ctk.CTkLabel(master=main_frame, text="Selección de Quincena Personalizada", font=fuentes.titulo(size=18), text_color=colores.TEXTO_PRIMARIO)
+        lbl_titulo.pack(anchor="w", padx=20, pady=(15, 3))
+
+        lbl_sub = ctk.CTkLabel(master=main_frame, text="Haz clic en cualquier día para iniciar el lapso de 15 días.", font=fuentes.cuerpo(size=12), text_color=colores.TEXTO_SECUNDARIO)
+        lbl_sub.pack(anchor="w", padx=20, pady=(0, 10))
+
+        self.info_box = ctk.CTkFrame(master=main_frame, fg_color=colores.BG_PANEL_ALT, corner_radius=10)
+        self.info_box.pack(fill="x", padx=20, pady=(0, 10))
+
+        self.lbl_rango_txt = ctk.CTkLabel(master=self.info_box, text="", font=fuentes.seccion(size=13), text_color=colores.TEXTO_PRIMARIO)
+        self.lbl_rango_txt.pack(pady=8)
+
+        nav_frame = ctk.CTkFrame(master=main_frame, fg_color="transparent")
+        nav_frame.pack(fill="x", padx=20, pady=5)
+
+        btn_prev = ctk.CTkButton(master=nav_frame, text="◀ Mes Ant.", width=90, fg_color=colores.NEUTRO, hover_color=colores.NEUTRO_HOVER, command=self.mes_anterior)
+        btn_prev.pack(side="left")
+
+        self.lbl_mes_anio = ctk.CTkLabel(master=nav_frame, text="", font=fuentes.seccion(size=15), text_color=colores.TEXTO_PRIMARIO)
+        self.lbl_mes_anio.pack(side="left", expand=True)
+
+        btn_next = ctk.CTkButton(master=nav_frame, text="Mes Sig. ▶", width=90, fg_color=colores.NEUTRO, hover_color=colores.NEUTRO_HOVER, command=self.mes_siguiente)
+        btn_next.pack(side="right")
+
+        self.cal_frame = ctk.CTkFrame(master=main_frame, fg_color=colores.BG_PANEL_ALT, corner_radius=10)
+        self.cal_frame.pack(fill="both", expand=True, padx=20, pady=10)
+
+        btn_action_frame = ctk.CTkFrame(master=main_frame, fg_color="transparent")
+        btn_action_frame.pack(fill="x", padx=20, pady=(5, 15))
+        btn_action_frame.grid_columnconfigure((0, 1), weight=1)
+
+        ctk.CTkButton(master=btn_action_frame, text="Cancelar", fg_color=colores.NEUTRO, hover_color=colores.NEUTRO_HOVER, height=38, command=self.destroy).grid(row=0, column=0, sticky="ew", padx=(0, 5))
+        self.btn_aceptar = ctk.CTkButton(master=btn_action_frame, text="Confirmar Quincena", fg_color=colores.EXITO, hover_color=colores.EXITO_HOVER, height=38, command=self.confirmar)
+        self.btn_aceptar.grid(row=0, column=1, sticky="ew", padx=(5, 0))
+
+    def mes_anterior(self):
+        if self.mes_vista == 1:
+            self.mes_vista = 12
+            self.anio_vista -= 1
+        else:
+            self.mes_vista -= 1
+        self.actualizar_calendario()
+
+    def mes_siguiente(self):
+        hoy = datetime.now().date()
+        if self.anio_vista > hoy.year or (self.anio_vista == hoy.year and self.mes_vista >= hoy.month):
+            return
+        if self.mes_vista == 12:
+            self.mes_vista = 1
+            self.anio_vista += 1
+        else:
+            self.mes_vista += 1
+        self.actualizar_calendario()
+
+    def seleccionar_dia(self, d_obj):
+        self.fecha_inicio_sel = d_obj
+        self.fecha_fin_sel = d_obj + timedelta(days=14)
+        self.actualizar_calendario()
+
+    def actualizar_calendario(self):
+        meses_es = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+        self.lbl_mes_anio.configure(text=f"{meses_es[self.mes_vista]} {self.anio_vista}")
+
+        self.lbl_rango_txt.configure(
+            text=f"Lapso: {self.fecha_inicio_sel.strftime('%d/%m/%Y')}  ➔  {self.fecha_fin_sel.strftime('%d/%m/%Y')} (15 Días)"
+        )
+
+        for widget in self.cal_frame.winfo_children():
+            widget.destroy()
+
+        dias_sem = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
+        for col_idx, d_str in enumerate(dias_sem):
+            lbl = ctk.CTkLabel(master=self.cal_frame, text=d_str, font=fuentes.seccion(size=11), text_color=colores.TEXTO_SECUNDARIO, width=45)
+            lbl.grid(row=0, column=col_idx, padx=2, pady=2)
+
+        hoy = datetime.now().date()
+        if self.fecha_fin_sel > hoy:
+            self.btn_aceptar.configure(state="disabled", fg_color=colores.TEXTO_TENUE)
+        else:
+            self.btn_aceptar.configure(state="normal", fg_color=colores.EXITO)
+
+        matriz_cal = calendar.monthcalendar(self.anio_vista, self.mes_vista)
+        for r_idx, semana in enumerate(matriz_cal, start=1):
+            for c_idx, dia_val in enumerate(semana):
+                if dia_val == 0:
+                    lbl_dia = ctk.CTkLabel(master=self.cal_frame, text="", width=45, height=30)
+                else:
+                    d_obj = date(self.anio_vista, self.mes_vista, dia_val)
+                    en_rango = self.fecha_inicio_sel <= d_obj <= self.fecha_fin_sel
+                    es_inicio = (d_obj == self.fecha_inicio_sel)
+                    es_futuro = d_obj > hoy
+
+                    if es_futuro:
+                        fg_color = "transparent"
+                        text_color = colores.TEXTO_TENUE
+                        state = "disabled"
+                    elif es_inicio:
+                        fg_color = "#2E7D32"
+                        text_color = "#FFFFFF"
+                        state = "normal"
+                    elif en_rango:
+                        fg_color = colores.ACENTO if not (d_obj.weekday() >= 5) else "#7B5B1B"
+                        text_color = "#FFFFFF"
+                        state = "normal"
+                    else:
+                        fg_color = colores.BG_VENTANA
+                        text_color = colores.TEXTO_PRIMARIO
+                        state = "normal"
+
+                    btn_dia = ctk.CTkButton(
+                        master=self.cal_frame,
+                        text=str(dia_val),
+                        width=42,
+                        height=30,
+                        corner_radius=6,
+                        fg_color=fg_color,
+                        text_color=text_color,
+                        state=state,
+                        font=fuentes.cuerpo(size=12),
+                        command=lambda d=d_obj: self.seleccionar_dia(d)
+                    )
+                    btn_dia.grid(row=r_idx, column=c_idx, padx=2, pady=2)
+
+        self.resultado_inicio = self.fecha_inicio_sel
+        self.resultado_fin = self.fecha_fin_sel
+
+    def confirmar(self):
+        hoy = datetime.now().date()
+        if self.resultado_fin > hoy:
+            mostrar_advertencia("Fecha Inválida", "El lapso de 15 días no puede terminar en una fecha posterior al día actual.", master=self)
+            return
+        self.destroy()
+
+    def obtener_fechas(self):
+        return self.resultado_inicio, self.resultado_fin
 
 
 class VentanaExcepcionesDialog(ctk.CTkToplevel):
@@ -238,6 +387,10 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
 
         self.excepciones_texto_guardado = ""
 
+        hoy = datetime.now()
+        self.fecha_inicio_sel = date(hoy.year, hoy.month, 1)
+        self.fecha_fin_sel = self.fecha_inicio_sel + timedelta(days=14)
+
         self._crear_interfaz()
         self.cargar_areas()
 
@@ -305,20 +458,21 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
                     continue
         return excepciones_globales, excepciones_docente
 
+    def abrir_selector_quincena(self):
+        dialog = VentanaSeleccionQuincenaDialog(self, self.fecha_inicio_sel)
+        self.wait_window(dialog)
+        if dialog.resultado_inicio and dialog.resultado_fin:
+            self.fecha_inicio_sel = dialog.resultado_inicio
+            self.fecha_fin_sel = dialog.resultado_fin
+            self.lbl_periodo_val.configure(
+                text=f"Del {self.fecha_inicio_sel.strftime('%d/%m/%Y')} al {self.fecha_fin_sel.strftime('%d/%m/%Y')} (15 Días)",
+                text_color=colores.TEXTO_PRIMARIO
+            )
+
     def abrir_dialogo_excepciones(self):
         area_seleccionada = self.cb_area.get().strip()
-        try:
-            f_inicio_str = self.entry_inicio.get().strip()
-            f_fin_str = self.entry_fin.get().strip()
-            fecha_inicio = datetime.strptime(f_inicio_str, '%d/%m/%Y').date()
-            fecha_fin = datetime.strptime(f_fin_str, '%d/%m/%Y').date()
-            
-            if fecha_inicio > fecha_fin:
-                mostrar_error("Error", "La fecha de inicio no puede ser posterior a la fecha fin.", master=self)
-                return
-        except ValueError:
-            mostrar_error("Error de Formato", "Ingresa fechas válidas (DD/MM/AAAA) antes de asignar días libres.", master=self)
-            return
+        fecha_inicio = self.fecha_inicio_sel
+        fecha_fin = self.fecha_fin_sel
 
         try:
             conn = self.obtener_conexion_bd()
@@ -351,18 +505,16 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
         else:
             self.lbl_estado_excepciones.configure(text="Sin excepciones asignadas.", text_color=colores.TEXTO_SECUNDARIO)
 
-    def cargar_datos_reporte(self, area, fecha_inicio, fecha_fin):
-        """
-        Docentes del área, sus horarios y sus ponchadas del periodo, en 3 consultas
-        (antes eran 2 consultas por docente por día). Cierra siempre la conexión.
-        Devuelve (docentes, horarios, checadas_por_dia):
-            horarios:         {(id_profesor, id_dia): [(entrada, salida), ...]}   (puede haber varios turnos)
-            checadas_por_dia: {(id_profesor, fecha): [datetime, ...]}
-        """
+    def cargar_datos_reporte(self, area, fecha_inicio, fecha_fin, solo_asignatura=False):
         conn = self.obtener_conexion_bd()
         try:
             cursor = conn.cursor(dictionary=True)
-            cursor.execute("SELECT id_profesor, nombre FROM profesores WHERE area = %s ORDER BY nombre ASC", (area,))
+            if solo_asignatura:
+                # Carga global de todos los profesores de asignatura sin filtrar por área
+                cursor.execute("SELECT id_profesor, nombre FROM profesores WHERE tipo = 'Asignatura' ORDER BY nombre ASC")
+            else:
+                cursor.execute("SELECT id_profesor, nombre FROM profesores WHERE area = %s ORDER BY nombre ASC", (area,))
+
             docentes = cursor.fetchall()
             if not docentes:
                 return [], {}, {}
@@ -388,29 +540,24 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
         finally:
             conn.close()
 
-    def generar_excel_quincenal(self):
+    def generar_excel_quincenal(self, solo_asignatura=False):
         area_seleccionada = self.cb_area.get().strip()
-        if not area_seleccionada or area_seleccionada == "Sin áreas registradas":
+        if not solo_asignatura and (not area_seleccionada or area_seleccionada == "Sin áreas registradas"):
             mostrar_advertencia("Advertencia", "Selecciona un área válida.", master=self)
             return
 
-        try:
-            f_inicio_str = self.entry_inicio.get().strip()
-            f_fin_str = self.entry_fin.get().strip()
-            
-            fecha_inicio = datetime.strptime(f_inicio_str, '%d/%m/%Y').date()
-            fecha_fin = datetime.strptime(f_fin_str, '%d/%m/%Y').date()
-            
-            if fecha_inicio > fecha_fin:
-                mostrar_error("Error", "La fecha de inicio no puede ser posterior a la fecha fin.", master=self)
-                return
-        except ValueError:
-            mostrar_error("Error de Formato", "Las fechas deben tener el formato válido DD/MM/AAAA (ej. 01/12/2025).", master=self)
-            return
+        fecha_inicio = self.fecha_inicio_sel
+        fecha_fin = self.fecha_fin_sel
 
         excepciones_globales, excepciones_docente = self.parsear_excepciones(self.excepciones_texto_guardado)
 
-        nombre_defecto = f"Reporte_Asistencia_{area_seleccionada.replace(' ', '_')}_{fecha_inicio.strftime('%Y%m%d')}_{fecha_fin.strftime('%Y%m%d')}.xlsx"
+        if solo_asignatura:
+            titulo_reporte_excel = "Control Quincenal de Asistencia - Profesores de Asignatura (Global)"
+            nombre_defecto = f"Reporte_Asistencia_Profesores_de_Asignatura_{fecha_inicio.strftime('%Y%m%d')}_{fecha_fin.strftime('%Y%m%d')}.xlsx"
+        else:
+            titulo_reporte_excel = f"Control Quincenal de Asistencia - Área: {area_seleccionada}"
+            nombre_defecto = f"Reporte_Asistencia_{area_seleccionada.replace(' ', '_')}_{fecha_inicio.strftime('%Y%m%d')}_{fecha_fin.strftime('%Y%m%d')}.xlsx"
+
         ruta_guardado = filedialog.asksaveasfilename(
             title="Guardar Reporte Excel",
             initialfile=nombre_defecto,
@@ -427,19 +574,27 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
             self.lbl_estado_dot.configure(text_color=colores.ESTADO_PROCESANDO)
             self.update()
 
-            docentes, horarios, checadas_por_dia = self.cargar_datos_reporte(area_seleccionada, fecha_inicio, fecha_fin)
+            docentes, horarios, checadas_por_dia = self.cargar_datos_reporte(area_seleccionada, fecha_inicio, fecha_fin, solo_asignatura)
 
             if not docentes:
                 self.lbl_estado_texto.configure(text="Listo para generar reporte.")
                 self.lbl_estado_dot.configure(text_color=colores.ESTADO_INACTIVO)
-                mostrar_advertencia("Sin Datos", f"No hay docentes registrados en el área: {area_seleccionada}", master=self)
+                msg = "No hay profesores de asignatura registrados en el sistema." if solo_asignatura else f"No hay docentes registrados en el área: {area_seleccionada}"
+                mostrar_advertencia("Sin Datos", msg, master=self)
                 return
 
             dias_quincena = []
             curr = fecha_inicio
             while curr <= fecha_fin:
-                dias_quincena.append(curr)
+                if curr.weekday() < 5:  
+                    dias_quincena.append(curr)
                 curr += timedelta(days=1)
+
+            if not dias_quincena:
+                mostrar_advertencia("Aviso", "No hay días laborables (lunes a viernes) en el periodo seleccionado.", master=self)
+                self.lbl_estado_texto.configure(text="Listo para generar reporte.")
+                self.lbl_estado_dot.configure(text_color=colores.ESTADO_INACTIVO)
+                return
 
             wb = openpyxl.Workbook()
             ws = wb.active
@@ -510,12 +665,12 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
                         pass
 
             ws.merge_cells(f"A1:{col_total_letter}1")
-            ws["A1"] = "UNIVERSIDAD TECNOLÓGICA DE NOGALES, SONORA\nDirección de Administración y Finanzas\nDepartamento de Recursos Humanos\nControl Quincenal de Asistencia Administrativo y Profesor de Tiempo Completo"
+            ws["A1"] = f"UNIVERSIDAD TECNOLÓGICA DE NOGALES, SONORA\nDirección de Administración y Finanzas\nDepartamento de Recursos Humanos\n{titulo_reporte_excel}"
             ws["A1"].font = Font(name="Arial", size=8, bold=True)
             ws["A1"].alignment = align_center
 
             ws.merge_cells(f"A3:{col_total_letter}3")
-            ws["A3"] = f"Área/Dirección: {area_seleccionada}"
+            ws["A3"] = f"Alcance: {'Todos los Profesores de Asignatura (Global)' :<40}" if solo_asignatura else f"Área/Dirección: {area_seleccionada}"
             ws["A3"].font = f_subtitulo
             ws["A3"].alignment = align_center
 
@@ -539,7 +694,7 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
             ws[f"A{header_start_row}"] = "NOMBRE"
 
             ws.merge_cells(f"B{header_start_row}:{col_fin_letter}{header_start_row}")
-            ws["B7"] = "DÍAS / ENTRADAS Y SALIDAS"
+            ws["B7"] = "DÍAS HÁBILES / ENTRADAS Y SALIDAS"
 
             ws.merge_cells(f"{col_total_letter}{header_start_row}:{col_total_letter}{header_end_row}")
             ws[f"{col_total_letter}{header_start_row}"] = "TOTAL"
@@ -563,7 +718,6 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
             fila_actual = 10
 
             def escribir_bloque(fila_ini, fila_fin, col, valor, fuente, alineacion):
-                """Escribe una celda que puede ocupar varias filas (con borde en todas para que se imprima completa)."""
                 for r in range(fila_ini, fila_fin + 1):
                     ws.cell(row=r, column=col).border = thin_border
                 celda = ws.cell(row=fila_ini, column=col, value=valor)
@@ -579,7 +733,6 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
                 nombre_prof = doc['nombre']
                 nombre_norm = nombre_prof.strip().lower()
 
-                # Qué va en cada día: una (entrada, salida, retardo) por cada horario del día
                 por_dia = []
                 for d in dias_quincena:
                     circunstancia_docente = excepciones_docente.get((nombre_norm, d))
@@ -594,7 +747,6 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
                             d, horarios.get((id_prof, d.weekday() + 1), ()), checadas_por_dia.get((id_prof, d), ()))
                     por_dia.append(celdas)
 
-                # Un docente con dos horarios en algún día del periodo ocupa dos filas
                 filas_doc = max(len(celdas) for celdas in por_dia)
                 hay_doble_horario = hay_doble_horario or filas_doc > 1
                 total_retardo_min = sum(retardo for celdas in por_dia for _, _, retardo in celdas)
@@ -606,7 +758,7 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
                 for celdas in por_dia:
                     for i, (val_entrada, val_salida, _) in enumerate(celdas):
                         f_ini = fila_actual + i
-                        f_fin = f_ini if i < len(celdas) - 1 else fila_fin      # el último horario ocupa las filas que sobren
+                        f_fin = f_ini if i < len(celdas) - 1 else fila_fin      
                         escribir_bloque(f_ini, f_fin, col_dia, val_entrada, f_normal, align_center)
                         escribir_bloque(f_ini, f_fin, col_dia + 1, val_salida, f_normal, align_center)
                     col_dia += 2
@@ -686,11 +838,10 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
             self.lbl_estado_texto.configure(text="Reporte generado exitosamente.")
             self.lbl_estado_dot.configure(text_color=colores.ESTADO_EXITO)
 
-            # Docentes sin NINGÚN horario registrado: su reporte solo puede mostrar ponchadas (no hay faltas ni retardos que calcular)
             con_horario = {id_prof for id_prof, _ in horarios}
             sin_horario = [d['nombre'] for d in docentes if d['id_profesor'] not in con_horario]
             if sin_horario:
-                lista = "\n".join(f"   – {n}" for n in sin_horario[:10]) + (f"\n   – … y {len(sin_horario) - 10} más" if len(sin_horario) > 10 else "")
+                lista = "\n".join(f"   – {n}" for n in sin_horario[:10]) + (f"\n   – … y {len(sin_horario) - 10} más" if len(sin_horario) - 10 > 0 else "")
                 mostrar_advertencia(
                     "Reporte generado con observaciones",
                     f"El reporte se guardó en:\n{ruta_guardado}\n\n"
@@ -747,7 +898,7 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
 
         lbl_subtitulo = ctk.CTkLabel(
             master=title_box,
-            text="Selecciona el área, define el lapso de fechas (DD/MM/AAAA) y asigna días libres o excepciones mediante el asistente.",
+            text="Selecciona el área, define el lapso quincenal y exporta reportes por área o globales de asignatura.",
             font=fuentes.cuerpo(size=13),
             text_color=colores.TEXTO_SECUNDARIO,
         )
@@ -756,36 +907,45 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
         params_frame = ctk.CTkFrame(master=main_card, fg_color=colores.BG_PANEL_ALT, corner_radius=15, border_width=1, border_color=colores.BORDE_SUAVE)
         params_frame.pack(fill="x", padx=25, pady=10, ipady=15)
 
-        lbl_sec_params = ctk.CTkLabel(master=params_frame, text="PARÁMETROS Y LAPSO DE TIEMPO", font=fuentes.pequena(size=11), text_color=colores.TEXTO_SECUNDARIO)
+        lbl_sec_params = ctk.CTkLabel(master=params_frame, text="PARÁMETROS Y LAPSO QUINCENAL (15 DÍAS)", font=fuentes.pequena(size=11), text_color=colores.TEXTO_SECUNDARIO)
         lbl_sec_params.pack(anchor="w", padx=25, pady=(15, 10))
 
         box_inputs = ctk.CTkFrame(master=params_frame, fg_color="transparent")
         box_inputs.pack(fill="x", padx=25)
-        box_inputs.grid_columnconfigure((0, 1, 2), weight=1, uniform="col")
+        box_inputs.grid_columnconfigure((0, 1), weight=1, uniform="col")
 
-        lbl_area = ctk.CTkLabel(master=box_inputs, text="Área / Dirección:", font=fuentes.seccion(size=13), text_color=colores.TEXTO_PRIMARIO)
+        lbl_area = ctk.CTkLabel(master=box_inputs, text="Área / Dirección (Para reporte por área):", font=fuentes.seccion(size=13), text_color=colores.TEXTO_PRIMARIO)
         lbl_area.grid(row=0, column=0, sticky="w", pady=(0, 5))
         self.cb_area = ctk.CTkComboBox(master=box_inputs, font=fuentes.cuerpo(size=13), height=38, corner_radius=8)
         self.cb_area.grid(row=1, column=0, sticky="ew", padx=(0, 10))
 
-        lbl_inicio = ctk.CTkLabel(master=box_inputs, text="Fecha Inicio (DD/MM/AAAA):", font=fuentes.seccion(size=13), text_color=colores.TEXTO_PRIMARIO)
-        lbl_inicio.grid(row=0, column=1, sticky="w", pady=(0, 5))
-        self.entry_inicio = ctk.CTkEntry(master=box_inputs, font=fuentes.cuerpo(size=13), height=38, corner_radius=8)
-        self.entry_inicio.grid(row=1, column=1, sticky="ew", padx=5)
-        
-        hoy = datetime.now()
-        inicio_mes = date(hoy.year, hoy.month, 1)
-        self.entry_inicio.insert(0, inicio_mes.strftime('%d/%m/%Y'))
+        lbl_periodo = ctk.CTkLabel(master=box_inputs, text="Periodo Quincenal Seleccionado (15 Días):", font=fuentes.seccion(size=13), text_color=colores.TEXTO_PRIMARIO)
+        lbl_periodo.grid(row=0, column=1, sticky="w", pady=(0, 5))
 
-        lbl_fin = ctk.CTkLabel(master=box_inputs, text="Fecha Fin (DD/MM/AAAA):", font=fuentes.seccion(size=13), text_color=colores.TEXTO_PRIMARIO)
-        lbl_fin.grid(row=0, column=2, sticky="w", pady=(0, 5))
-        self.entry_fin = ctk.CTkEntry(master=box_inputs, font=fuentes.cuerpo(size=13), height=38, corner_radius=8)
-        self.entry_fin.grid(row=1, column=2, sticky="ew", padx=(10, 0))
-        
-        fin_quincena = date(hoy.year, hoy.month, 15 if hoy.day <= 15 else calendar.monthrange(hoy.year, hoy.month)[1])
-        self.entry_fin.insert(0, fin_quincena.strftime('%d/%m/%Y'))
+        periodo_btn_frame = ctk.CTkFrame(master=box_inputs, fg_color=colores.BG_ENTRADA, corner_radius=8, height=38, border_width=1, border_color=colores.BORDE_SUAVE)
+        periodo_btn_frame.grid(row=1, column=1, sticky="ew", padx=(10, 0))
+        periodo_btn_frame.pack_propagate(False)
 
-        # Botón para abrir el diálogo de excepciones / días libres
+        self.lbl_periodo_val = ctk.CTkLabel(
+            master=periodo_btn_frame,
+            text=f"Del {self.fecha_inicio_sel.strftime('%d/%m/%Y')} al {self.fecha_fin_sel.strftime('%d/%m/%Y')} (15 Días)",
+            font=fuentes.cuerpo(size=13),
+            text_color=colores.TEXTO_PRIMARIO
+        )
+        self.lbl_periodo_val.pack(side="left", padx=12)
+
+        btn_elegir_quincena = ctk.CTkButton(
+            master=periodo_btn_frame,
+            text="📅 Elegir Quincena",
+            width=130,
+            height=30,
+            fg_color=colores.ACENTO,
+            hover_color=colores.ACENTO_HOVER,
+            font=fuentes.boton(size=12),
+            command=self.abrir_selector_quincena
+        )
+        btn_elegir_quincena.pack(side="right", padx=4)
+
         box_btn_exc = ctk.CTkFrame(master=params_frame, fg_color="transparent")
         box_btn_exc.pack(fill="x", padx=25, pady=(18, 5))
 
@@ -812,28 +972,44 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
 
         btn_frame = ctk.CTkFrame(master=main_card, fg_color="transparent")
         btn_frame.pack(fill="x", padx=25, pady=20)
+        btn_frame.grid_columnconfigure((0, 1), weight=1)
 
         btn_generar = ctk.CTkButton(
             master=btn_frame,
-            text="📊 Exportar Reporte Personalizado a Excel",
+            text="📊 Exportar reporte por area",
             fg_color="#EEA942",
             hover_color="#AA7526",
             font=fuentes.boton(size=14),
             corner_radius=10,
             height=46,
-            command=self.generar_excel_quincenal
+            command=lambda: self.generar_excel_quincenal(solo_asignatura=False)
         )
-        btn_generar.pack(side="left", padx=(0, 15), expand=True, fill="x")
+        btn_generar.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+
+        btn_generar_asignatura = ctk.CTkButton(
+            master=btn_frame,
+            text="📊  Exportar reporte de docentes de asignatura",
+            fg_color="#2E7D32",
+            hover_color="#1B5E20",
+            font=fuentes.boton(size=14),
+            corner_radius=10,
+            height=46,
+            command=lambda: self.generar_excel_quincenal(solo_asignatura=True)
+        )
+        btn_generar_asignatura.grid(row=0, column=1, sticky="ew", padx=(8, 0))
+
+        btn_volver_frame = ctk.CTkFrame(master=main_card, fg_color="transparent")
+        btn_volver_frame.pack(fill="x", padx=25, pady=(0, 15))
 
         btn_volver = ctk.CTkButton(
-            master=btn_frame,
+            master=btn_volver_frame,
             text="Volver al Menú Principal",
             fg_color=colores.NEUTRO,
             hover_color=colores.NEUTRO_HOVER,
             font=fuentes.boton(size=14),
             corner_radius=10,
             width=220,
-            height=46,
+            height=40,
             command=self.regresar_al_menu
         )
         btn_volver.pack(side="right")
