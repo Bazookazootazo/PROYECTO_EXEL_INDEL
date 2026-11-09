@@ -68,7 +68,7 @@ class VentanaRegistroChecadas(ctk.CTkToplevel):
         try:
             conn = self.obtener_conexion_bd()
             cursor = conn.cursor(dictionary=True)
-            cursor.execute("SELECT id_profesor, nombre, area FROM profesores ORDER BY nombre ASC")
+            cursor.execute("""SELECT p.id_profesor, p.nombre, a.nombre AS area FROM profesores p LEFT JOIN areas a ON p.id_area = a.id_area ORDER BY p.nombre ASC""")
             self.profesores = cursor.fetchall()
             cursor.close()
             conn.close()
@@ -121,7 +121,7 @@ class VentanaRegistroChecadas(ctk.CTkToplevel):
             condiciones.append("c.id_profesor = %s")
             params.append(self.mapa_docentes[docente])
         elif area != TODAS_AREAS:
-            condiciones.append("p.area = %s")
+            condiciones.append("a.nombre = %s")
             params.append(area)
 
         desde = self._parsear_fecha(self.ent_desde.get(), "Desde")
@@ -168,6 +168,7 @@ class VentanaRegistroChecadas(ctk.CTkToplevel):
             base = """
                 FROM checadas c
                 LEFT JOIN profesores p ON p.id_profesor = c.id_profesor
+                LEFT JOIN areas a ON a.id_area = p.id_area
             """
             cursor.execute(f"SELECT COUNT(*) AS total {base} {where}", params)
             self.total_registros = cursor.fetchone()['total']
@@ -179,7 +180,7 @@ class VentanaRegistroChecadas(ctk.CTkToplevel):
 
             cursor.execute(
                 f"""
-                SELECT c.id_checada, p.nombre, p.area, c.fecha_hora
+                SELECT c.id_checada, p.nombre, a.nombre AS area, c.fecha_hora
                 {base} {where}
                 ORDER BY c.fecha_hora DESC, c.id_checada DESC
                 LIMIT %s OFFSET %s
@@ -442,7 +443,7 @@ class VentanaRegistroChecadas(ctk.CTkToplevel):
         }
         for col, (texto, ancho, ancla) in encabezados.items():
             self.tabla.heading(col, text=texto, anchor=ancla)
-            self.tabla.column(col, width=ancho, anchor=ancla, stretch=(col in ("docente", "area")))
+            self.tabla.column(col, width=ancho, anchor=ancla, stretch=(col in ("docente", "area"))) 
 
         self.tabla.tag_configure("par", background=colores.BG_SUPERFICIE)
         self.tabla.tag_configure("impar", background=colores.BG_PANEL_ALT)

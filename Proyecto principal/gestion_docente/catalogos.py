@@ -1,28 +1,27 @@
 """
-Catálogos de la institución: única fuente de verdad para Áreas, Tipos y Días.
+Catálogos de la institución: Tipos, Turnos y Días viven aquí; las Áreas viven en la base de datos (tabla areas).
 
 Cada entrada lleva sus alias (otras formas en que la gente suele escribirla).
-Para que el importador reconozca algo nuevo basta agregarlo aquí; el formulario
-de docentes y la plantilla de Excel se actualizan solos.
+Para que el importador reconozca algo nuevo basta agregarlo aquí (las áreas nuevas
+se reconocen por su nombre; ALIAS_AREAS solo agrega sinónimos).
 """
 import re
 import unicodedata
 from difflib import get_close_matches
 
-AREAS = {
-    "Rectoría": [],
-    "Abogado General": [],
-    "Administración y Finanzas": ["admin", "administrativa", "administrativo"],
-    "Extensión Universitaria": [],
-    "Vinculación": [],
-    "Planeación y Evaluación": [],
-    "C.A.D.A": [],
+from utilerias import database as db
+
+ALIAS_AREAS = {
+    "Tecnologías de la Información": ["ti", "tic", "tics", "sistemas", "informatica", "computacion", "sistemas computacionales"],
     "Mecatrónica": [],
-    "Tecnologías de la Información y la Comunicación": [],
-    "Procesos Industriales": [],
-    "Energías Renovables": [],
-    "Apoyo Educativo": [],
+    "Administración": ["admin", "administrativa", "administrativo"],
+    "Recursos Humanos": ["rh", "rrhh", "capital humano"],
+    "Ciencias Básicas": ["basicas", "ciencias", "matematicas", "fisica", "quimica"],
+    "Departamento de Prueba": ["prueba", "depto de prueba"],
 }
+
+AREAS = {}          # nombre -> alias; se sincroniza con la base de datos en recargar_areas()
+
 TIPOS = {
     "Tiempo Completo": ["tc", "ptc", "completo", "planta", "de planta", "full time"],
     "Asignatura": ["pa", "por asignatura", "por horas", "hora clase", "horas clase", "eventual", "part time"],
@@ -69,9 +68,20 @@ def _indice(catalogo):
     return {normalizar(n): canon for canon, alias in catalogo.items() for n in (canon, *alias)}
 
 
-INDICE_AREAS = _indice(AREAS)
+INDICE_AREAS = {}
 INDICE_TIPOS = _indice(TIPOS)
 INDICE_TURNOS = _indice(TURNOS)
+
+
+def recargar_areas():
+    """Sincroniza AREAS e INDICE_AREAS con la tabla areas (se modifican en sitio: los demás módulos los ven al instante)."""
+    AREAS.clear()
+    AREAS.update({a["nombre"]: ALIAS_AREAS.get(a["nombre"], []) for a in db.obtener_areas()})
+    INDICE_AREAS.clear()
+    INDICE_AREAS.update(_indice(AREAS))
+
+
+recargar_areas()
 
 
 def resolver(valor, indice):

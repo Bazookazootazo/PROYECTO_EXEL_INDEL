@@ -4,9 +4,9 @@ from utilerias import database as db
 from utilerias.messagebox_variados import mostrar_advertencia, mostrar_error, mostrar_exito
 from utilerias.paleta_colores import colores, fuentes
 
-class VentanaCrudProfesor(ctk.CTkToplevel):
-    AREAS_INSTITUCION = list(AREAS)        # única fuente: catalogos.py
+SIN_TURNO = "Sin turno"
 
+class VentanaCrudProfesor(ctk.CTkToplevel):
     def __init__(self, parent, profesor_a_editar=None, on_success_callback=None):
         super().__init__(parent)
         
@@ -61,7 +61,7 @@ class VentanaCrudProfesor(ctk.CTkToplevel):
         # Campo: Área
         ctk.CTkLabel(self.form_frame, text="Área", font=fuentes.pequena(size=11), text_color=colores.TEXTO_SECUNDARIO, anchor="w").pack(fill="x", pady=(0, 3))
         self.cmb_area = ctk.CTkOptionMenu(
-            self.form_frame, values=self.AREAS_INSTITUCION, height=36, corner_radius=9,
+            self.form_frame, values=list(AREAS), height=36, corner_radius=9,
             font=fuentes.cuerpo(size=13), fg_color=colores.BG_ENTRADA,
             button_color=colores.ACENTO, button_hover_color=colores.ACENTO_HOVER,
         )
@@ -79,7 +79,7 @@ class VentanaCrudProfesor(ctk.CTkToplevel):
         # Campo: Turno
         ctk.CTkLabel(self.form_frame, text="Turno", font=fuentes.pequena(size=11), text_color=colores.TEXTO_SECUNDARIO, anchor="w").pack(fill="x", pady=(0, 3))
         self.cmb_turno = ctk.CTkOptionMenu(
-            self.form_frame, values=list(TURNOS), height=36, corner_radius=9,
+            self.form_frame, values=[SIN_TURNO, *TURNOS], height=36, corner_radius=9,
             font=fuentes.cuerpo(size=13), fg_color=colores.BG_ENTRADA,
             button_color=colores.ACENTO, button_hover_color=colores.ACENTO_HOVER
         )
@@ -114,19 +114,22 @@ class VentanaCrudProfesor(ctk.CTkToplevel):
             self.ent_nombre.insert(0, self.profesor_a_editar['nombre'])
             self.cmb_area.set(self.profesor_a_editar['area'])
             self.cmb_tipo.set(self.profesor_a_editar['tipo'])
-            self.cmb_turno.set(self.profesor_a_editar.get('turno', 'Matutino'))
+            self.cmb_turno.set(self.profesor_a_editar.get('turno') or SIN_TURNO)
         else:
-            self.cmb_turno.set('Matutino')
+            self.cmb_turno.set(SIN_TURNO)
 
     def guardar_profesor(self):
         nombre = self.ent_nombre.get().strip()
         area = self.cmb_area.get()
         tipo = self.cmb_tipo.get()
         turno = self.cmb_turno.get()
-        turno = self.cmb_turno.get().strip() or "Matutino"
+        turno = None if turno == SIN_TURNO else turno
 
         if not nombre:
             mostrar_advertencia("Atención", "Ingresa el nombre completo.", master=self)
+            return
+        if area not in AREAS:
+            mostrar_advertencia("Atención", "Registra primero un área con el botón «Áreas».", master=self)
             return
 
         try:

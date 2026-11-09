@@ -145,9 +145,9 @@ def planificar_datos(profesores, area=None, tipo=None, turno=None):
     for p in profesores:
         nueva_area = area or p["area"]
         nuevo_tipo = tipo or p["tipo"]
-        nuevo_turno = turno or p.get("turno", "Matutino")
+        nuevo_turno = turno or p.get("turno")
         
-        if (nueva_area, nuevo_tipo, nuevo_turno) == (p["area"], p["tipo"], p.get("turno", "Matutino")):
+        if (nueva_area, nuevo_tipo, nuevo_turno) == (p["area"], p["tipo"], p.get("turno")):
             sin_cambio.append(_nombre(p))
             continue
             
@@ -155,8 +155,8 @@ def planificar_datos(profesores, area=None, tipo=None, turno=None):
             cambios[f"Área: {p['area']} → {nueva_area}"].append(_nombre(p))
         if nuevo_tipo != p["tipo"]:
             cambios[f"Tipo: {p['tipo']} → {nuevo_tipo}"].append(_nombre(p))
-        if nuevo_turno != p.get("turno", "Matutino"):
-            cambios[f"Turno: {p.get('turno', 'Matutino')} → {nuevo_turno}"].append(_nombre(p))
+        if nuevo_turno != p.get("turno"):
+            cambios[f"Turno: {p.get('turno') or 'Sin turno'} → {nuevo_turno}"].append(_nombre(p))
             
         plan.payload.append(_entrada_payload(p, area=nueva_area, tipo=nuevo_tipo, turno=nuevo_turno, actualizar=True))
 

@@ -407,9 +407,11 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
         try:
             conn = self.obtener_conexion_bd()
             cursor = conn.cursor()
-            cursor.execute("SELECT DISTINCT area FROM profesores WHERE area IS NOT NULL AND area != '' ORDER BY area ASC")
+            cursor.execute("SELECT DISTINCT a.id_area, a.nombre FROM areas a JOIN profesores p ON p.id_area = a.id_area WHERE a.nombre IS NOT NULL AND a.nombre != '' ORDER BY a.nombre ASC")
             filas = cursor.fetchall()
-            areas = [f[0] for f in filas]
+            areas = [f[1] for f in filas]
+            #self.mapa_areas = {f['nombre']: f['id_area'] for f in filas}
+            #areas = list(self.mapa_areas.keys())
 
             if areas:
                 self.cb_area.configure(values=areas)
@@ -477,7 +479,7 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
         try:
             conn = self.obtener_conexion_bd()
             cursor = conn.cursor(dictionary=True)
-            cursor.execute("SELECT id_profesor, nombre FROM profesores WHERE area = %s ORDER BY nombre ASC", (area_seleccionada,))
+            cursor.execute("""SELECT p.id_profesor, p.nombre FROM profesores p JOIN areas a ON p.id_area = a.id_area WHERE a.nombre = %s ORDER BY p.nombre ASC""", (area_seleccionada,))
             docentes = cursor.fetchall()
             cursor.close()
             conn.close()
@@ -509,12 +511,13 @@ class VentanaGenerarReporte(ctk.CTkToplevel):
         conn = self.obtener_conexion_bd()
         try:
             cursor = conn.cursor(dictionary=True)
-            if solo_asignatura:
-                # Carga global de todos los profesores de asignatura sin filtrar por área
-                cursor.execute("SELECT id_profesor, nombre FROM profesores WHERE tipo = 'Asignatura' ORDER BY nombre ASC")
-            else:
-                cursor.execute("SELECT id_profesor, nombre FROM profesores WHERE area = %s ORDER BY nombre ASC", (area,))
-
+            cursor.execute("""
+                SELECT p.id_profesor, p.nombre 
+                FROM profesores p 
+                JOIN areas a ON p.id_area = a.id_area 
+                WHERE a.nombre = %s 
+                ORDER BY p.nombre ASC
+            """, (area,))
             docentes = cursor.fetchall()
             if not docentes:
                 return [], {}, {}

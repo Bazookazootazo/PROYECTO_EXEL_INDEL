@@ -567,18 +567,18 @@ class Importacion:
                     di.estado = "omitido"
                     di.nota = f"No se importa: falta {'el Área' if not area else 'el Tipo'}" + (f" (y {len(turnos)} turno(s))" if turnos else "")
                     continue
-                di.estado, di.area, di.tipo, di.turno = "nuevo", area, tipo, turno or inferir_turno(turnos) or "Matutino"
+                di.estado, di.area, di.tipo, di.turno = "nuevo", area, tipo, turno or inferir_turno(turnos)
             else:
                 di.area = area or prof["area"]
                 di.tipo = tipo or prof["tipo"]
-                di.turno = turno or prof.get("turno", "Matutino")
+                di.turno = turno or prof.get("turno")
                 
                 if di.area != prof["area"]:
                     di.cambios.append(f"Área: {prof['area']} → {di.area}")
                 if di.tipo != prof["tipo"]:
                     di.cambios.append(f"Tipo: {prof['tipo']} → {di.tipo}")
-                if di.turno != prof.get("turno", "Matutino"):
-                    di.cambios.append(f"Turno: {prof.get('turno', 'Matutino')} → {di.turno}")
+                if di.turno != prof.get("turno"):
+                    di.cambios.append(f"Turno: {prof.get('turno') or 'Sin turno'} → {di.turno}")
                     
                 di.estado = "actualiza" if di.cambios else "existente"
 
